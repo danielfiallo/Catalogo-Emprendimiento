@@ -9,7 +9,7 @@ import {
   Plus, Image as ImageIcon, Save, X, Settings, 
   Store, Phone, ShieldCheck, Truck, Headphones,
   Star, CheckCircle, Clock, Mail, AtSign,
-  Camera, Lock, Info, LogOut, Palette, Type, Upload
+  Camera, Lock, Info, LogOut, Palette, Type, Upload, WifiOff
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN DE TU FIREBASE PROPORCIONADA ---
@@ -23,8 +23,17 @@ const firebaseConfig = {
 };
 
 // Inicialización segura de Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+let app;
+let db;
+let firebaseDisponible = false;
+
+try {
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+  db = getFirestore(app);
+  firebaseDisponible = true;
+} catch (error) {
+  console.warn("Firebase no se pudo inicializar. Usando base de datos local de respaldo.", error);
+}
 
 // Estados iniciales elegantes
 const DEFAULT_STORE_INFO = {
@@ -45,11 +54,56 @@ const DEFAULT_STORE_INFO = {
   fontFamily: 'font-sans' 
 };
 
+const DEFAULT_PRODUCTS = [
+  {
+    id: 'prod-1',
+    name: 'Audífonos Inalámbricos Pro',
+    price: 120000,
+    image: 'https://images.unsplash.com/photo-1606220588913-b3aecb4b2075?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+    description: 'Cancelación de ruido activa, sonido de alta fidelidad y batería de 24 horas.'
+  },
+  {
+    id: 'prod-2',
+    name: 'Smartwatch Serie X',
+    price: 250000,
+    image: 'https://images.unsplash.com/photo-1579586337278-3befd40fd17a?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+    description: 'Monitor de ritmo cardíaco, notificaciones inteligentes y resistencia al agua IP68.'
+  }
+];
+
+const DEFAULT_REVIEWS = [
+  {
+    id: 'rev-1',
+    author: 'María G.',
+    text: 'Excelente atención, el producto llegó rápido a Medellín y en perfectas condiciones. ¡Súper recomendados!',
+    rating: 5
+  },
+  {
+    id: 'rev-2',
+    author: 'Carlos T.',
+    text: 'Me asesoraron muy bien antes de comprar por WhatsApp. Los audífonos suenan espectacular.',
+    rating: 5
+  }
+];
+
 export default function App() {
-  const [storeInfo, setStoreInfo] = useState(DEFAULT_STORE_INFO);
-  const [products, setProducts] = useState([]);
-  const [reviews, setReviews] = useState([]);
+  const [storeInfo, setStoreInfo] = useState(() => {
+    const local = localStorage.getItem('local_store_info');
+    return local ? JSON.parse(local) : DEFAULT_STORE_INFO;
+  });
+  
+  const [products, setProducts] = useState(() => {
+    const local = localStorage.getItem('local_products');
+    return local ? JSON.parse(local) : DEFAULT_PRODUCTS;
+  });
+
+  const [reviews, setReviews] = useState(() => {
+    const local = localStorage.getItem('local_reviews');
+    return local ? JSON.parse(local) : DEFAULT_REVIEWS;
+  });
+
   const [loading, setLoading] = useState(true);
+  const [usandoLocal, setUsandoLocal] = useState(false);
   const [firebaseError, setFirebaseError] = useState(null);
 
   const [isAdminMode, setIsAdminMode] = useState(false);
@@ -65,6 +119,9 @@ export default function App() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewFormData, setReviewFormData] = useState({ author: '', text: '', rating: 5 });
 
+  // Nuevo estado para abrir el modal del cliente
+  const [selectedProduct, setSelectedProduct] = useState(null);
+
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, action: null, message: '' });
   const [compressing, setCompressing] = useState(false);
 
@@ -77,47 +134,111 @@ export default function App() {
   const bannerImageInputRef = useRef(null);
 
   useEffect(() => {
-    // 1. Escuchar Configuración de Tienda
-    const unsubStore = onSnapshot(doc(db, "config", "store"), (docSnap) => {
-      if (docSnap.exists()) {
-        setStoreInfo(docSnap.data());
-      } else {
-        setDoc(doc(db, "config", "store"), DEFAULT_STORE_INFO);
+    let unsubs = [];
+    
+    // Temporizador de respaldo: si Firebase tarda más de 3.5 segundos en responder,
+    // activamos el modo Local de inmediato para que la web funcione perfectamente.
+    const fallbackTimer = setTimeout(() => {
+      if (loading) {
+        console.warn("Firebase demoró demasiado en responder. Activando respaldo LocalStorage.");
+        setUsandoLocal(true);
+        setLoading(false);
       }
-    }, (error) => {
-      console.error("Error Firestore config:", error);
-      if (error.code === 'permission-denied') {
-        setFirebaseError("Permisos denegados en Firestore. Asegúrate de configurar la base de datos en 'Modo de Prueba'.");
+    }, 3500);
+
+    if (firebaseDisponible && db) {
+      try {
+        // 1. Escuchar Configuración de Tienda
+        const unsubStore = onSnapshot(doc(db, "config", "store"), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setStoreInfo(data);
+            localStorage.setItem('local_store_info', JSON.stringify(data));
+          } else {
+            setDoc(doc(db, "config", "store"), DEFAULT_STORE_INFO);
+          }
+          setUsandoLocal(false);
+        }, (error) => {
+          console.error("Error en Firestore (Config):", error);
+          manejarErrorFirebase(error);
+        });
+
+        // 2. Escuchar Productos
+        const unsubProducts = onSnapshot(collection(db, "products"), (querySnap) => {
+          const prodList = [];
+          querySnap.forEach((doc) => {
+            prodList.push({ id: doc.id, ...doc.data() });
+          });
+          setProducts(prodList);
+          localStorage.setItem('local_products', JSON.stringify(prodList));
+          setUsandoLocal(false);
+        }, (error) => {
+          console.error("Error en Firestore (Productos):", error);
+          manejarErrorFirebase(error);
+        });
+
+        // 3. Escuchar Reseñas
+        const unsubReviews = onSnapshot(collection(db, "reviews"), (querySnap) => {
+          const reviewList = [];
+          querySnap.forEach((doc) => {
+            reviewList.push({ id: doc.id, ...doc.data() });
+          });
+          setReviews(reviewList);
+          localStorage.setItem('local_reviews', JSON.stringify(reviewList));
+          setUsandoLocal(false);
+          setLoading(false);
+          clearTimeout(fallbackTimer);
+        }, (error) => {
+          console.error("Error en Firestore (Reseñas):", error);
+          manejarErrorFirebase(error);
+        });
+
+        unsubs = [unsubStore, unsubProducts, unsubReviews];
+
+      } catch (err) {
+        console.error("Error de conexión Firebase:", err);
+        setUsandoLocal(true);
+        setLoading(false);
+        clearTimeout(fallbackTimer);
       }
-    });
-
-    // 2. Escuchar Productos en tiempo real
-    const unsubProducts = onSnapshot(collection(db, "products"), (querySnap) => {
-      const prodList = [];
-      querySnap.forEach((doc) => {
-        prodList.push({ id: doc.id, ...doc.data() });
-      });
-      setProducts(prodList);
-    });
-
-    // 3. Escuchar Reseñas en tiempo real
-    const unsubReviews = onSnapshot(collection(db, "reviews"), (querySnap) => {
-      const reviewList = [];
-      querySnap.forEach((doc) => {
-        reviewList.push({ id: doc.id, ...doc.data() });
-      });
-      setReviews(reviewList);
+    } else {
+      setUsandoLocal(true);
       setLoading(false);
-    });
+      clearTimeout(fallbackTimer);
+    }
 
     return () => {
-      unsubStore();
-      unsubProducts();
-      unsubReviews();
+      unsubs.forEach(unsub => unsub());
+      clearTimeout(fallbackTimer);
     };
   }, []);
 
-  // Función mágica que reduce el tamaño de las imágenes para guardarlas gratis en Firestore
+  const manejarErrorFirebase = (error) => {
+    setUsandoLocal(true);
+    setLoading(false);
+    if (error.code === 'permission-denied') {
+      setFirebaseError("Permisos denegados en Firebase. Ve a la consola de Firebase > Firestore Database > Reglas (Rules) y configúralas en modo lectura/escritura pública.");
+    } else {
+      setFirebaseError(`Error de Firebase: ${error.message}. Usando base de datos local de respaldo.`);
+    }
+  };
+
+  // Función de sincronización para guardar datos (intenta en Firebase, siempre guarda en LocalStorage)
+  const guardarConfiguracion = async (nuevosDatos) => {
+    const configActualizada = { ...storeInfo, ...nuevosDatos };
+    setStoreInfo(configActualizada);
+    localStorage.setItem('local_store_info', JSON.stringify(configActualizada));
+
+    if (firebaseDisponible && !usandoLocal) {
+      try {
+        await setDoc(doc(db, "config", "store"), configActualizada, { merge: true });
+      } catch (e) {
+        console.error("No se pudo sincronizar configuración con Firebase:", e);
+      }
+    }
+  };
+
+  // Función mágica que reduce el tamaño de las imágenes para guardarlas gratis
   const compressAndConvertImage = (file, maxWidth = 500, maxHeight = 500, quality = 0.6) => {
     return new Promise((resolve, reject) => {
       setCompressing(true);
@@ -148,7 +269,6 @@ export default function App() {
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
           
-          // Exportamos como JPEG comprimido súper liviano
           const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
           setCompressing(false);
           resolve(compressedBase64);
@@ -170,7 +290,7 @@ export default function App() {
     if (file) {
       try {
         const compressedBase64 = await compressAndConvertImage(file, 200, 200, 0.7);
-        await updateDoc(doc(db, "config", "store"), { logo: compressedBase64 });
+        await guardarConfiguracion({ logo: compressedBase64 });
       } catch (err) {
         console.error("Error comprimiendo logo:", err);
       }
@@ -181,9 +301,8 @@ export default function App() {
     const file = e.target.files[0];
     if (file) {
       try {
-        // El banner puede ser un poco más ancho
         const compressedBase64 = await compressAndConvertImage(file, 800, 450, 0.5);
-        await updateDoc(doc(db, "config", "store"), { bannerImage: compressedBase64 });
+        await guardarConfiguracion({ bannerImage: compressedBase64 });
       } catch (err) {
         console.error("Error comprimiendo banner:", err);
       }
@@ -195,7 +314,7 @@ export default function App() {
     if (file) {
       try {
         const compressedBase64 = await compressAndConvertImage(file, 600, 600, 0.5);
-        await updateDoc(doc(db, "config", "store"), { aboutImage: compressedBase64 });
+        await guardarConfiguracion({ aboutImage: compressedBase64 });
       } catch (err) {
         console.error("Error comprimiendo imagen corporativa:", err);
       }
@@ -220,7 +339,8 @@ export default function App() {
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
-    if (pin === '1234') { 
+    // Cambia '1234' por la contraseña de 4 números que tú quieras (mantén las comillas sencillas)
+    if (pin === '9876') { 
       setIsAdminMode(true);
       setShowLoginModal(false);
       setPin('');
@@ -242,16 +362,32 @@ export default function App() {
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    try {
-      if (editingProduct) {
-        await updateDoc(doc(db, "products", editingProduct.id), productFormData);
-      } else {
-        await addDoc(collection(db, "products"), productFormData);
-      }
-      setIsProductModalOpen(false);
-    } catch (err) {
-      console.error(err);
+    const idTemp = editingProduct ? editingProduct.id : `prod-${Date.now()}`;
+    const nuevoProducto = { ...productFormData, id: idTemp };
+
+    // 1. Guardar localmente de inmediato
+    let productosActualizados;
+    if (editingProduct) {
+      productosActualizados = products.map(p => p.id === idTemp ? nuevoProducto : p);
+    } else {
+      productosActualizados = [...products, nuevoProducto];
     }
+    setProducts(productosActualizados);
+    localStorage.setItem('local_products', JSON.stringify(productosActualizados));
+
+    // 2. Intentar guardar en Firebase
+    if (firebaseDisponible && !usandoLocal) {
+      try {
+        if (editingProduct) {
+          await updateDoc(doc(db, "products", idTemp), productFormData);
+        } else {
+          await setDoc(doc(db, "products", idTemp), productFormData);
+        }
+      } catch (err) {
+        console.error("Error subiendo producto a Firebase:", err);
+      }
+    }
+    setIsProductModalOpen(false);
   };
 
   const requestDeleteProduct = (id) => {
@@ -259,28 +395,45 @@ export default function App() {
       isOpen: true,
       message: '¿Estás seguro de eliminar este producto del catálogo?',
       action: async () => {
-        try {
-          await deleteDoc(doc(db, "products", id));
-          setConfirmDialog({ isOpen: false, action: null, message: '' });
-        } catch (e) {
-          console.error(e);
+        const productosActualizados = products.filter(p => p.id !== id);
+        setProducts(productosActualizados);
+        localStorage.setItem('local_products', JSON.stringify(productosActualizados));
+
+        if (firebaseDisponible && !usandoLocal) {
+          try {
+            await deleteDoc(doc(db, "products", id));
+          } catch (e) {
+            console.error("Error eliminando de Firebase:", e);
+          }
         }
+        setConfirmDialog({ isOpen: false, action: null, message: '' });
       }
     });
   };
 
   const handleSaveReview = async (e) => {
     e.preventDefault();
-    try {
-      await addDoc(collection(db, "reviews"), {
-        ...reviewFormData,
-        date: Date.now()
-      });
-      setIsReviewModalOpen(false);
-      setReviewFormData({ author: '', text: '', rating: 5 });
-    } catch (err) {
-      console.error(err);
+    const idTemp = `rev-${Date.now()}`;
+    const nuevaReview = { ...reviewFormData, id: idTemp, date: Date.now() };
+
+    const reviewsActualizadas = [...reviews, nuevaReview];
+    setReviews(reviewsActualizadas);
+    localStorage.setItem('local_reviews', JSON.stringify(reviewsActualizadas));
+
+    if (firebaseDisponible && !usandoLocal) {
+      try {
+        await setDoc(doc(db, "reviews", idTemp), {
+          author: reviewFormData.author,
+          text: reviewFormData.text,
+          rating: reviewFormData.rating,
+          date: Date.now()
+        });
+      } catch (err) {
+        console.error(err);
+      }
     }
+    setIsReviewModalOpen(false);
+    setReviewFormData({ author: '', text: '', rating: 5 });
   };
 
   const requestDeleteReview = (id) => {
@@ -288,12 +441,18 @@ export default function App() {
       isOpen: true,
       message: '¿Eliminar esta opinión de cliente de la página?',
       action: async () => {
-        try {
-          await deleteDoc(doc(db, "reviews", id));
-          setConfirmDialog({ isOpen: false, action: null, message: '' });
-        } catch (e) {
-          console.error(e);
+        const reviewsActualizadas = reviews.filter(r => r.id !== id);
+        setReviews(reviewsActualizadas);
+        localStorage.setItem('local_reviews', JSON.stringify(reviewsActualizadas));
+
+        if (firebaseDisponible && !usandoLocal) {
+          try {
+            await deleteDoc(doc(db, "reviews", id));
+          } catch (e) {
+            console.error(e);
+          }
         }
+        setConfirmDialog({ isOpen: false, action: null, message: '' });
       }
     });
   };
@@ -335,6 +494,7 @@ export default function App() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           <p className="text-gray-500 mt-4 font-medium">Sincronizando con Google Firebase...</p>
+          <p className="text-xs text-gray-400 mt-2">Si es tu primera vez cargando, activaremos el modo local de respaldo en unos segundos.</p>
         </div>
       </div>
     );
@@ -344,8 +504,14 @@ export default function App() {
     <div className={`min-h-screen bg-gray-50/50 flex flex-col ${storeInfo.fontFamily || 'font-sans'} selection:bg-blue-200`}>
       
       {firebaseError && (
-        <div className="bg-red-600 text-white p-4 text-center text-sm font-semibold relative z-50">
-          ⚠️ {firebaseError}
+        <div className="bg-amber-500 text-amber-950 p-3 text-center text-xs sm:text-sm font-semibold relative z-50 flex items-center justify-center gap-2 shadow-md">
+          <WifiOff size={18} /> {firebaseError}
+        </div>
+      )}
+
+      {usandoLocal && !firebaseError && (
+        <div className="bg-blue-600 text-white p-2.5 text-center text-xs sm:text-sm font-medium relative z-50 flex items-center justify-center gap-2 shadow">
+          <span>📲 Catálogo Funcionando en <b>Modo Respaldo Local</b>. Tus cambios se guardarán en tu navegador.</span>
         </div>
       )}
 
@@ -380,13 +546,13 @@ export default function App() {
                     <input 
                       type="text" 
                       value={storeInfo.name}
-                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { name: e.target.value })}
+                      onChange={async (e) => await guardarConfiguracion({ name: e.target.value })}
                       className="font-bold text-lg bg-yellow-50 border border-yellow-300 rounded px-2 w-full focus:outline-none"
                     />
                     <input 
                       type="text" 
                       value={storeInfo.description}
-                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { description: e.target.value })}
+                      onChange={async (e) => await guardarConfiguracion({ description: e.target.value })}
                       className="text-xs text-gray-500 bg-yellow-50 border border-yellow-300 rounded px-2 w-full focus:outline-none"
                     />
                   </div>
@@ -424,7 +590,7 @@ export default function App() {
 
       {isAdminMode && (
         <div className="bg-yellow-400 text-yellow-950 py-2.5 px-4 text-center text-xs sm:text-sm font-bold flex justify-center items-center gap-2 shadow-inner">
-          <Settings size={16} /> MODO EDICIÓN ACTIVO: Cualquier cambio se guarda permanentemente en la nube de Google.
+          <Settings size={16} /> MODO EDICIÓN ACTIVO: Cualquier cambio se guarda permanentemente.
         </div>
       )}
 
@@ -447,12 +613,12 @@ export default function App() {
                 <input 
                   type="text" 
                   value={storeInfo.bannerTitle}
-                  onChange={async (e) => await updateDoc(doc(db, "config", "store"), { bannerTitle: e.target.value })}
+                  onChange={async (e) => await guardarConfiguracion({ bannerTitle: e.target.value })}
                   className="text-2xl font-bold bg-white/10 border border-white/20 rounded px-2 w-full text-white focus:outline-none"
                 />
                 <textarea 
                   value={storeInfo.bannerSubtitle}
-                  onChange={async (e) => await updateDoc(doc(db, "config", "store"), { bannerSubtitle: e.target.value })}
+                  onChange={async (e) => await guardarConfiguracion({ bannerSubtitle: e.target.value })}
                   className="text-sm bg-white/10 border border-white/20 rounded p-2 w-full text-white focus:outline-none h-20"
                 />
                 <button 
@@ -514,7 +680,11 @@ export default function App() {
               {products.map(product => (
                 <div key={product.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-full group relative">
                   
-                  <div className="relative aspect-square bg-gray-50 overflow-hidden">
+                  {}
+                  <div 
+                    onClick={() => !isAdminMode && setSelectedProduct(product)}
+                    className={`relative aspect-square bg-gray-50 overflow-hidden ${!isAdminMode ? 'cursor-pointer' : ''}`}
+                  >
                     {product.image ? (
                       <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     ) : (
@@ -537,8 +707,13 @@ export default function App() {
                   </div>
 
                   <div className="p-6 flex flex-col flex-grow">
-                    <h3 className="font-bold text-gray-900 text-xl mb-2 line-clamp-1 leading-tight">{product.name}</h3>
-                    <p className="text-sm text-gray-500 mb-5 flex-grow line-clamp-2 leading-relaxed">{product.description}</p>
+                    <div 
+                      onClick={() => !isAdminMode && setSelectedProduct(product)}
+                      className={!isAdminMode ? 'cursor-pointer' : ''}
+                    >
+                      <h3 className="font-bold text-gray-900 text-xl mb-2 line-clamp-1 leading-tight group-hover:text-blue-600 transition-colors">{product.name}</h3>
+                      <p className="text-sm text-gray-500 mb-5 flex-grow line-clamp-2 leading-relaxed">{product.description}</p>
+                    </div>
                     
                     <div className="mt-auto pt-4 border-t border-gray-100">
                       <div className="mb-4 flex flex-col">
@@ -549,14 +724,22 @@ export default function App() {
                       </div>
 
                       {!isAdminMode && (
-                        <button 
-                          onClick={() => openWhatsApp(product.name)}
-                          className="w-full py-3.5 text-white text-base font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm"
-                          style={{ backgroundColor: storeInfo.secondaryColor }}
-                        >
-                          <MessageCircle size={22} />
-                          Cotizar por WhatsApp
-                        </button>
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => openWhatsApp(product.name)}
+                            className="flex-1 py-3.5 text-white text-base font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                            style={{ backgroundColor: storeInfo.secondaryColor }}
+                          >
+                            <MessageCircle size={22} />
+                            Cotizar
+                          </button>
+                          <button 
+                            onClick={() => setSelectedProduct(product)}
+                            className="px-4 py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl transition-all"
+                          >
+                            Detalles
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -591,7 +774,7 @@ export default function App() {
             {isAdminMode ? (
               <textarea 
                 value={storeInfo.aboutText}
-                onChange={async (e) => await updateDoc(doc(db, "config", "store"), { aboutText: e.target.value })}
+                onChange={async (e) => await guardarConfiguracion({ aboutText: e.target.value })}
                 className="w-full h-64 p-4 bg-yellow-50 border border-yellow-300 rounded-2xl text-gray-700 leading-relaxed focus:outline-none resize-none"
               />
             ) : (
@@ -693,7 +876,7 @@ export default function App() {
                     <input 
                       type="text" 
                       value={storeInfo.phone} 
-                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { phone: e.target.value })} 
+                      onChange={async (e) => await guardarConfiguracion({ phone: e.target.value })} 
                       className="bg-gray-800 text-white px-2 py-1 rounded text-sm w-full" 
                     />
                   ) : <span className="text-sm">+{storeInfo.phone}</span>}
@@ -705,7 +888,7 @@ export default function App() {
                     <input 
                       type="text" 
                       value={storeInfo.instagram} 
-                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { instagram: e.target.value })} 
+                      onChange={async (e) => await guardarConfiguracion({ instagram: e.target.value })} 
                       className="bg-gray-800 text-white px-2 py-1 rounded text-sm w-full" 
                     />
                   ) : <span className="text-sm">{storeInfo.instagram}</span>}
@@ -717,7 +900,7 @@ export default function App() {
                     <input 
                       type="text" 
                       value={storeInfo.email} 
-                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { email: e.target.value })} 
+                      onChange={async (e) => await guardarConfiguracion({ email: e.target.value })} 
                       className="bg-gray-800 text-white px-2 py-1 rounded text-sm w-full" 
                     />
                   ) : <span className="text-sm">{storeInfo.email}</span>}
@@ -729,7 +912,7 @@ export default function App() {
                     <input 
                       type="text" 
                       value={storeInfo.schedule} 
-                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { schedule: e.target.value })} 
+                      onChange={async (e) => await guardarConfiguracion({ schedule: e.target.value })} 
                       className="bg-gray-800 text-white px-2 py-1 rounded text-sm w-full" 
                     />
                   ) : <span className="text-sm">{storeInfo.schedule}</span>}
@@ -795,6 +978,87 @@ export default function App() {
         </div>
       )}
 
+      {}
+      {selectedProduct && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl relative flex flex-col md:flex-row max-h-[90vh] md:max-h-none overflow-y-auto md:overflow-visible">
+            
+            <button 
+              onClick={() => setSelectedProduct(null)} 
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-10"
+            >
+              <X size={20} />
+            </button>
+
+            {/* Lado de Imagen */}
+            <div className="w-full md:w-1/2 aspect-square md:aspect-auto md:h-auto bg-gray-50 relative min-h-[250px]">
+              {selectedProduct.image ? (
+                <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                  <ImageIcon size={64} />
+                  <span className="text-sm font-semibold mt-2">Sin imagen</span>
+                </div>
+              )}
+            </div>
+
+            {/* Lado de Información */}
+            <div className="w-full md:w-1/2 p-6 md:p-8 flex flex-col justify-between">
+              <div>
+                <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Detalles del Producto</span>
+                <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mt-1 mb-3">{selectedProduct.name}</h2>
+                
+                <div className="mb-4">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Precio de Lanzamiento</span>
+                  <span className="text-3xl font-black text-gray-900 tracking-tight">
+                    {formatPrice(selectedProduct.price)}
+                  </span>
+                </div>
+
+                <div className="border-t border-gray-100 pt-4 mb-6">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Descripción</span>
+                  <p className="text-gray-600 text-sm md:text-base leading-relaxed whitespace-pre-line">
+                    {selectedProduct.description || "Este espectacular artículo no cuenta con descripción adicional, pero puedes cotizarlo o resolver tus dudas de inmediato."}
+                  </p>
+                </div>
+
+                {/* Beneficios de confianza destacados */}
+                <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-50 mb-6">
+                  <span className="text-xs font-bold text-blue-800 uppercase tracking-wider block mb-3">Beneficios con tu compra:</span>
+                  <ul className="space-y-2.5 text-xs text-gray-700">
+                    <li className="flex items-center gap-2">
+                      <ShieldCheck size={16} className="text-green-600 shrink-0" />
+                      <span><b>Garantía Oficial:</b> Cobertura ante fallas de fábrica.</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Truck size={16} className="text-green-600 shrink-0" />
+                      <span><b>Envío Seguro:</b> Cobertura a toda Colombia.</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Headphones size={16} className="text-green-600 shrink-0" />
+                      <span><b>Soporte Postventa:</b> Soporte gratuito vía WhatsApp.</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => {
+                  openWhatsApp(selectedProduct.name);
+                  setSelectedProduct(null);
+                }}
+                className="w-full py-4 text-white text-base font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg hover:brightness-110"
+                style={{ backgroundColor: storeInfo.secondaryColor }}
+              >
+                <MessageCircle size={24} />
+                Comprar por WhatsApp
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE PERSONALIZACIÓN DE TEMA */}
       {showThemeModal && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
@@ -817,7 +1081,7 @@ export default function App() {
                   {FONT_OPTIONS.map(opt => (
                     <button
                       key={opt.id}
-                      onClick={async () => await updateDoc(doc(db, "config", "store"), { fontFamily: opt.id })}
+                      onClick={async () => await guardarConfiguracion({ fontFamily: opt.id })}
                       className={`p-3 rounded-xl border text-left text-sm font-medium transition-all ${storeInfo.fontFamily === opt.id ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-gray-200 hover:bg-gray-50'}`}
                     >
                       {opt.label}
@@ -834,7 +1098,7 @@ export default function App() {
                   {COLOR_PALETTES.map((pal, idx) => (
                     <button
                       key={idx}
-                      onClick={async () => await updateDoc(doc(db, "config", "store"), { primaryColor: pal.primary, secondaryColor: pal.secondary })}
+                      onClick={async () => await guardarConfiguracion({ primaryColor: pal.primary, secondaryColor: pal.secondary })}
                       className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all"
                     >
                       <div className="flex gap-1 shrink-0">
