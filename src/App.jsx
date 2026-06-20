@@ -1,63 +1,63 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { 
+  getFirestore, doc, onSnapshot, setDoc, collection, 
+  addDoc, updateDoc, deleteDoc 
+} from 'firebase/firestore';
 import { 
   ShoppingBag, MessageCircle, Edit3, Trash2, 
   Plus, Image as ImageIcon, Save, X, Settings, 
   Store, Phone, ShieldCheck, Truck, Headphones,
-  Star, CheckCircle, CreditCard, Clock, Mail, AtSign,
-  Camera, Lock, Info, LogOut
+  Star, CheckCircle, Clock, Mail, AtSign,
+  Camera, Lock, Info, LogOut, Palette, Type, Upload
 } from 'lucide-react';
 
+// --- CONFIGURACIÓN DE TU FIREBASE PROPORCIONADA ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCtLQYM2aPNWMCgEks8GUD_GvS5HNTLcZU",
+  authDomain: "catalogo-profesional.firebaseapp.com",
+  projectId: "catalogo-profesional",
+  storageBucket: "catalogo-profesional.firebasestorage.app",
+  messagingSenderId: "908682908485",
+  appId: "1:908682908485:web:105d8f07910e726d3fa42c"
+};
+
+// Inicialización segura de Firebase
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+const db = getFirestore(app);
+
+// Estados iniciales elegantes
+const DEFAULT_STORE_INFO = {
+  name: 'Mi Emprendimiento Tech',
+  description: 'Los mejores dispositivos y accesorios de audio.',
+  logo: '',
+  phone: '573001234567',
+  instagram: '@mi.marca.tech',
+  email: 'contacto@mitienda.com',
+  schedule: 'Lunes a Sábado: 8am - 6pm',
+  bannerTitle: 'Lleva tu música a otro nivel',
+  bannerSubtitle: 'Descubre nuestra línea exclusiva de audífonos y accesorios premium con garantía.',
+  bannerImage: 'https://images.unsplash.com/photo-1546435770-a3e426bf472b?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80',
+  aboutText: 'En nuestra tienda nos apasiona la tecnología y trabajamos para ofrecerte productos de calidad, atención confiable y una experiencia de compra segura. Brindamos asesoría personalizada para ayudarte a elegir los audífonos y dispositivos que mejor se adapten a tus necesidades. Además, realizamos envíos a toda Colombia, llevando tecnología hasta tu puerta de forma rápida y segura. Tu satisfacción y confianza son nuestra prioridad. 🚀📦',
+  aboutImage: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
+  primaryColor: '#3b82f6', 
+  secondaryColor: '#10b981', 
+  fontFamily: 'font-sans' 
+};
+
 export default function App() {
-  // --- ESTADOS DE SEGURIDAD Y ADMIN ---
+  const [storeInfo, setStoreInfo] = useState(DEFAULT_STORE_INFO);
+  const [products, setProducts] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [firebaseError, setFirebaseError] = useState(null);
+
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showThemeModal, setShowThemeModal] = useState(false);
   const [pin, setPin] = useState('');
   const [loginError, setLoginError] = useState(false);
-  
-  // Variables para el "Toque Secreto"
-  const clickCount = useRef(0);
-  const clickTimeout = useRef(null);
 
-  // --- ESTADOS DE LA TIENDA ---
-  const [storeInfo, setStoreInfo] = useState({
-    name: 'Mi Emprendimiento',
-    logo: '',
-    phone: '573001234567',
-    description: 'Los mejores productos al mejor precio.',
-    aboutText: 'En nuestra tienda nos apasiona la tecnología y trabajamos para ofrecerte productos de calidad, atención confiable y una experiencia de compra segura. Brindamos asesoría personalizada para ayudarte a elegir los dispositivos que mejor se adapten a tus necesidades. Además, realizamos envíos a toda Colombia. Tu satisfacción y confianza son nuestra prioridad. 🚀📦',
-    aboutImage: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
-    instagram: '@mi.emprendimiento',
-    email: 'ventas@miemprendimiento.com',
-    schedule: 'Lunes a Sábado: 9am - 6pm'
-  });
-
-  const [products, setProducts] = useState([
-    {
-      id: 1,
-      name: 'Audífonos Inalámbricos Pro',
-      price: 120000,
-      image: 'https://images.unsplash.com/photo-1606220588913-b3aecb4b2075?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
-      description: 'Cancelación de ruido y batería de 24 horas.'
-    },
-    {
-      id: 2,
-      name: 'Smartwatch Serie X',
-      price: 250000,
-      image: 'https://images.unsplash.com/photo-1579586337278-3befd40fd17a?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
-      description: 'Monitor de ritmo cardíaco y notificaciones.'
-    }
-  ]);
-
-  const [reviews, setReviews] = useState([
-    {
-      id: 1,
-      author: 'María G.',
-      text: 'Excelente atención, el producto llegó rápido y en perfectas condiciones. ¡Súper recomendados!',
-      rating: 5
-    }
-  ]);
-
-  // --- ESTADOS DE MODALES ---
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [productFormData, setProductFormData] = useState({ name: '', price: '', description: '', image: '' });
@@ -66,42 +66,146 @@ export default function App() {
   const [reviewFormData, setReviewFormData] = useState({ author: '', text: '', rating: 5 });
 
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, action: null, message: '' });
+  const [compressing, setCompressing] = useState(false);
+
+  const clickCount = useRef(0);
+  const clickTimeout = useRef(null);
 
   const logoInputRef = useRef(null);
   const productInputRef = useRef(null);
   const aboutImageInputRef = useRef(null);
+  const bannerImageInputRef = useRef(null);
 
-  const formatPrice = (price) => {
-    return new Intl.NumberFormat('es-CO', {
-      style: 'currency',
-      currency: 'COP',
-      minimumFractionDigits: 0
-    }).format(price);
+  useEffect(() => {
+    // 1. Escuchar Configuración de Tienda
+    const unsubStore = onSnapshot(doc(db, "config", "store"), (docSnap) => {
+      if (docSnap.exists()) {
+        setStoreInfo(docSnap.data());
+      } else {
+        setDoc(doc(db, "config", "store"), DEFAULT_STORE_INFO);
+      }
+    }, (error) => {
+      console.error("Error Firestore config:", error);
+      if (error.code === 'permission-denied') {
+        setFirebaseError("Permisos denegados en Firestore. Asegúrate de configurar la base de datos en 'Modo de Prueba'.");
+      }
+    });
+
+    // 2. Escuchar Productos en tiempo real
+    const unsubProducts = onSnapshot(collection(db, "products"), (querySnap) => {
+      const prodList = [];
+      querySnap.forEach((doc) => {
+        prodList.push({ id: doc.id, ...doc.data() });
+      });
+      setProducts(prodList);
+    });
+
+    // 3. Escuchar Reseñas en tiempo real
+    const unsubReviews = onSnapshot(collection(db, "reviews"), (querySnap) => {
+      const reviewList = [];
+      querySnap.forEach((doc) => {
+        reviewList.push({ id: doc.id, ...doc.data() });
+      });
+      setReviews(reviewList);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubStore();
+      unsubProducts();
+      unsubReviews();
+    };
+  }, []);
+
+  // Función mágica que reduce el tamaño de las imágenes para guardarlas gratis en Firestore
+  const compressAndConvertImage = (file, maxWidth = 500, maxHeight = 500, quality = 0.6) => {
+    return new Promise((resolve, reject) => {
+      setCompressing(true);
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Exportamos como JPEG comprimido súper liviano
+          const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+          setCompressing(false);
+          resolve(compressedBase64);
+        };
+        img.onerror = (err) => {
+          setCompressing(false);
+          reject(err);
+        };
+      };
+      reader.onerror = (err) => {
+        setCompressing(false);
+        reject(err);
+      };
+    });
   };
 
-  const handleImageUpload = (e, callback) => {
+  const handleLogoChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => callback(reader.result);
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressAndConvertImage(file, 200, 200, 0.7);
+        await updateDoc(doc(db, "config", "store"), { logo: compressedBase64 });
+      } catch (err) {
+        console.error("Error comprimiendo logo:", err);
+      }
     }
   };
 
-  const openWhatsApp = (productName = null) => {
-    let message = `¡Hola! Vengo de tu catálogo virtual.`;
-    if (productName) {
-      message = `¡Hola! Me interesa cotizar o comprar el producto: *${productName}*. ¿Me podrías dar más información?`;
+  const handleBannerImageChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      try {
+        // El banner puede ser un poco más ancho
+        const compressedBase64 = await compressAndConvertImage(file, 800, 450, 0.5);
+        await updateDoc(doc(db, "config", "store"), { bannerImage: compressedBase64 });
+      } catch (err) {
+        console.error("Error comprimiendo banner:", err);
+      }
     }
-    const url = `https://wa.me/${storeInfo.phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
   };
 
-  // --- LÓGICA DE TOQUE SECRETO ---
+  const handleAboutImageChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      try {
+        const compressedBase64 = await compressAndConvertImage(file, 600, 600, 0.5);
+        await updateDoc(doc(db, "config", "store"), { aboutImage: compressedBase64 });
+      } catch (err) {
+        console.error("Error comprimiendo imagen corporativa:", err);
+      }
+    }
+  };
+
   const handleSecretKnock = () => {
     clickCount.current += 1;
     if (clickTimeout.current) clearTimeout(clickTimeout.current);
-    
+
     clickTimeout.current = setTimeout(() => {
       clickCount.current = 0;
     }, 1000);
@@ -125,226 +229,776 @@ export default function App() {
     }
   };
 
-  const handleSaveProduct = (e) => {
-    e.preventDefault();
-    if (editingProduct) {
-      setProducts(products.map(p => p.id === editingProduct.id ? { ...productFormData, id: p.id } : p));
+  const handleOpenProductModal = (product = null) => {
+    if (product) {
+      setEditingProduct(product);
+      setProductFormData({ ...product });
     } else {
-      setProducts([...products, { ...productFormData, id: Date.now() }]);
+      setEditingProduct(null);
+      setProductFormData({ name: '', price: '', description: '', image: '' });
     }
-    setIsProductModalOpen(false);
+    setIsProductModalOpen(true);
+  };
+
+  const handleSaveProduct = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingProduct) {
+        await updateDoc(doc(db, "products", editingProduct.id), productFormData);
+      } else {
+        await addDoc(collection(db, "products"), productFormData);
+      }
+      setIsProductModalOpen(false);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const requestDeleteProduct = (id) => {
     setConfirmDialog({
       isOpen: true,
-      message: '¿Eliminar este producto? No se puede deshacer.',
-      action: () => {
-        setProducts(products.filter(p => p.id !== id));
-        setConfirmDialog({ isOpen: false, action: null, message: '' });
+      message: '¿Estás seguro de eliminar este producto del catálogo?',
+      action: async () => {
+        try {
+          await deleteDoc(doc(db, "products", id));
+          setConfirmDialog({ isOpen: false, action: null, message: '' });
+        } catch (e) {
+          console.error(e);
+        }
       }
     });
   };
 
-  const handleSaveReview = (e) => {
+  const handleSaveReview = async (e) => {
     e.preventDefault();
-    setReviews([...reviews, { ...reviewFormData, id: Date.now() }]);
-    setIsReviewModalOpen(false);
-    setReviewFormData({ author: '', text: '', rating: 5 });
+    try {
+      await addDoc(collection(db, "reviews"), {
+        ...reviewFormData,
+        date: Date.now()
+      });
+      setIsReviewModalOpen(false);
+      setReviewFormData({ author: '', text: '', rating: 5 });
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const ConfirmModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
-        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
-          <Info className="h-6 w-6 text-red-600" />
-        </div>
-        <h3 className="text-lg font-bold text-gray-900 mb-2">Confirmar Acción</h3>
-        <p className="text-sm text-gray-500 mb-6">{confirmDialog.message}</p>
-        <div className="flex gap-3">
-          <button onClick={() => setConfirmDialog({ isOpen: false, action: null, message: '' })} className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium">Cancelar</button>
-          <button onClick={confirmDialog.action} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium shadow-sm">Eliminar</button>
+  const requestDeleteReview = (id) => {
+    setConfirmDialog({
+      isOpen: true,
+      message: '¿Eliminar esta opinión de cliente de la página?',
+      action: async () => {
+        try {
+          await deleteDoc(doc(db, "reviews", id));
+          setConfirmDialog({ isOpen: false, action: null, message: '' });
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    });
+  };
+
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      minimumFractionDigits: 0
+    }).format(price);
+  };
+
+  const openWhatsApp = (productName = null) => {
+    let message = `¡Hola! Vengo de tu catálogo virtual.`;
+    if (productName) {
+      message = `¡Hola! Me interesa cotizar o comprar el producto: *${productName}*. ¿Me podrías dar más información?`;
+    }
+    const url = `https://wa.me/${storeInfo.phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  const COLOR_PALETTES = [
+    { primary: '#3b82f6', secondary: '#10b981', label: 'Tech Clásico (Azul/Esmeralda)' },
+    { primary: '#8b5cf6', secondary: '#ec4899', label: 'Neón Premium (Violeta/Rosa)' },
+    { primary: '#10b981', secondary: '#f59e0b', label: 'Ecológico (Verde/Ámbar)' },
+    { primary: '#f43f5e', secondary: '#4f46e5', label: 'Enérgico (Rosa/Indigo)' },
+    { primary: '#111827', secondary: '#6b7280', label: 'Minimalista (Oscuro/Gris)' }
+  ];
+
+  const FONT_OPTIONS = [
+    { id: 'font-sans', label: 'Moderna (Sans-serif)' },
+    { id: 'font-serif', label: 'Elegante (Serif)' },
+    { id: 'font-mono', label: 'Futurista (Monospace)' }
+  ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="text-gray-500 mt-4 font-medium">Sincronizando con Google Firebase...</p>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50/50 font-sans pb-0 flex flex-col">
+    <div className={`min-h-screen bg-gray-50/50 flex flex-col ${storeInfo.fontFamily || 'font-sans'} selection:bg-blue-200`}>
+      
+      {firebaseError && (
+        <div className="bg-red-600 text-white p-4 text-center text-sm font-semibold relative z-50">
+          ⚠️ {firebaseError}
+        </div>
+      )}
+
       {/* CABECERA */}
       <header className="bg-white shadow-sm sticky top-0 z-40 border-b border-gray-100">
-        <div className="max-w-5xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-4">
+        <div className="max-w-5xl mx-auto px-4 py-4 sm:px-6">
+          <div className="flex justify-between items-center gap-4">
+            
+            <div className="flex items-center gap-4 flex-1 min-w-0">
               <div className="relative group shrink-0">
                 {storeInfo.logo ? (
-                  <img src={storeInfo.logo} alt="Logo" className="h-14 w-14 rounded-full object-cover shadow-sm" />
+                  <img src={storeInfo.logo} alt="Logo" className="h-14 w-14 rounded-full object-cover border border-gray-200 shadow-sm" />
                 ) : (
-                  <div className="h-14 w-14 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><Store size={28} /></div>
+                  <div className="h-14 w-14 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shadow-sm border border-blue-100">
+                    <Store size={28} />
+                  </div>
                 )}
                 {isAdminMode && (
-                  <div onClick={() => logoInputRef.current?.click()} className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer">
-                    <Camera size={20} className="text-white" />
-                    <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, (res) => setStoreInfo({...storeInfo, logo: res}))}/>
+                  <div 
+                    onClick={() => logoInputRef.current?.click()}
+                    className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity"
+                  >
+                    <Camera size={18} className="text-white" />
+                    <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoChange}/>
                   </div>
                 )}
               </div>
-              <div className="flex-1">
+              
+              <div className="flex-1 min-w-0">
                 {isAdminMode ? (
-                  <>
-                    <input type="text" value={storeInfo.name} onChange={(e) => setStoreInfo({...storeInfo, name: e.target.value})} className="font-bold text-xl bg-yellow-50 w-full outline-none" />
-                    <input type="text" value={storeInfo.description} onChange={(e) => setStoreInfo({...storeInfo, description: e.target.value})} className="text-sm bg-yellow-50 w-full outline-none" />
-                  </>
+                  <div className="space-y-1">
+                    <input 
+                      type="text" 
+                      value={storeInfo.name}
+                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { name: e.target.value })}
+                      className="font-bold text-lg bg-yellow-50 border border-yellow-300 rounded px-2 w-full focus:outline-none"
+                    />
+                    <input 
+                      type="text" 
+                      value={storeInfo.description}
+                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { description: e.target.value })}
+                      className="text-xs text-gray-500 bg-yellow-50 border border-yellow-300 rounded px-2 w-full focus:outline-none"
+                    />
+                  </div>
                 ) : (
                   <>
-                    <h1 className="font-extrabold text-xl text-gray-900">{storeInfo.name}</h1>
-                    <p className="text-sm text-gray-500">{storeInfo.description}</p>
+                    <h1 className="font-extrabold text-xl md:text-2xl text-gray-900 truncate">{storeInfo.name}</h1>
+                    <p className="text-xs md:text-sm text-gray-500 truncate">{storeInfo.description}</p>
                   </>
                 )}
               </div>
             </div>
-            {isAdminMode && (
-               <button onClick={() => setIsAdminMode(false)} className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
-                 <LogOut size={16} /> Salir
-               </button>
-            )}
+
+            <div className="flex items-center gap-2">
+              {isAdminMode && (
+                <>
+                  <button 
+                    onClick={() => setShowThemeModal(true)}
+                    className="p-2 bg-indigo-50 text-indigo-700 rounded-xl flex items-center gap-2 font-semibold text-sm hover:bg-indigo-100 transition-colors"
+                  >
+                    <Palette size={18} /> <span className="hidden sm:inline">Tema</span>
+                  </button>
+                  <button 
+                    onClick={() => setIsAdminMode(false)}
+                    className="p-2 bg-gray-900 text-white rounded-xl flex items-center gap-2 font-semibold text-sm hover:bg-gray-800 transition-colors"
+                  >
+                    <LogOut size={18} /> <span className="hidden sm:inline">Cerrar</span>
+                  </button>
+                </>
+              )}
+            </div>
+
           </div>
         </div>
       </header>
 
       {isAdminMode && (
-        <div className="bg-yellow-400 text-yellow-900 px-4 py-2 text-center text-sm font-bold flex justify-center gap-2 shadow-inner">
-          <Settings size={18} /> ESTÁS EN MODO EDICIÓN
+        <div className="bg-yellow-400 text-yellow-950 py-2.5 px-4 text-center text-xs sm:text-sm font-bold flex justify-center items-center gap-2 shadow-inner">
+          <Settings size={16} /> MODO EDICIÓN ACTIVO: Cualquier cambio se guarda permanentemente en la nube de Google.
         </div>
       )}
 
-      {/* CONTENIDO PRINCIPAL */}
-      <main className="flex-grow max-w-5xl mx-auto w-full px-4 py-8 space-y-16">
+      {/* BANNER PRINCIPAL (HERO) */}
+      <section className="relative bg-gray-900 text-white overflow-hidden min-h-[300px] flex items-center">
+        {storeInfo.bannerImage && (
+          <img 
+            src={storeInfo.bannerImage} 
+            className="absolute inset-0 w-full h-full object-cover opacity-30" 
+            alt="Banner background" 
+          />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-900/80 to-transparent" />
         
-        {/* CATALOGO */}
-        <section>
-          <div className="flex justify-between items-center mb-8 border-b pb-4">
-            <h2 className="text-3xl font-bold flex items-center gap-3"><ShoppingBag className="text-blue-600" /> Catálogo</h2>
+        <div className="relative max-w-5xl mx-auto px-4 py-16 sm:px-6 lg:px-8 w-full z-10">
+          <div className="max-w-2xl">
+            {isAdminMode ? (
+              <div className="space-y-4 bg-black/40 p-4 rounded-2xl border border-white/20">
+                <span className="text-yellow-400 font-bold text-xs uppercase block">Editar Hero Banner:</span>
+                <input 
+                  type="text" 
+                  value={storeInfo.bannerTitle}
+                  onChange={async (e) => await updateDoc(doc(db, "config", "store"), { bannerTitle: e.target.value })}
+                  className="text-2xl font-bold bg-white/10 border border-white/20 rounded px-2 w-full text-white focus:outline-none"
+                />
+                <textarea 
+                  value={storeInfo.bannerSubtitle}
+                  onChange={async (e) => await updateDoc(doc(db, "config", "store"), { bannerSubtitle: e.target.value })}
+                  className="text-sm bg-white/10 border border-white/20 rounded p-2 w-full text-white focus:outline-none h-20"
+                />
+                <button 
+                  onClick={() => bannerImageInputRef.current?.click()}
+                  className="py-1.5 px-3 bg-white/20 hover:bg-white/30 text-xs rounded-lg flex items-center gap-2 transition-all font-semibold"
+                >
+                  <Camera size={14} /> Cambiar Imagen de Fondo
+                </button>
+                <input type="file" ref={bannerImageInputRef} className="hidden" accept="image/*" onChange={handleBannerImageChange}/>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight mb-4 leading-tight">
+                  {storeInfo.bannerTitle}
+                </h2>
+                <p className="text-base md:text-lg text-gray-300 mb-6">
+                  {storeInfo.bannerSubtitle}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* CONTENIDO PRINCIPAL */}
+      <main className="flex-grow max-w-5xl mx-auto w-full px-4 py-12 sm:px-6 lg:px-8 space-y-20">
+        
+        {/* SECCIÓN DEL CATÁLOGO */}
+        <section id="catalogo">
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-8 border-b border-gray-200 pb-4 gap-4">
+            <div className="text-center sm:text-left">
+              <h2 className="text-3xl font-bold text-gray-900 flex items-center justify-center sm:justify-start gap-3">
+                <ShoppingBag style={{ color: storeInfo.primaryColor }} className="h-8 w-8" />
+                Catálogo Disponible
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">Presiona "Cotizar por WhatsApp" para resolver dudas de inmediato.</p>
+            </div>
             {isAdminMode && (
-              <button onClick={() => { setEditingProduct(null); setProductFormData({name:'', price:'', description:'', image:''}); setIsProductModalOpen(true); }} className="bg-gray-900 text-white px-4 py-2 rounded-xl font-bold flex gap-2">
-                <Plus size={20} /> <span className="hidden sm:inline">Añadir</span>
+              <button 
+                onClick={() => handleOpenProductModal()}
+                className="w-full sm:w-auto text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-md hover:brightness-110"
+                style={{ backgroundColor: storeInfo.primaryColor }}
+              >
+                <Plus size={20} /> Añadir Producto
               </button>
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            {products.map(product => (
-              <div key={product.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col group">
-                <div className="relative aspect-square bg-gray-50">
-                  {product.image ? <img src={product.image} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon size={48} className="text-gray-300"/></div>}
-                  {isAdminMode && (
-                    <div className="absolute top-2 right-2 flex gap-2">
-                      <button onClick={() => { setEditingProduct(product); setProductFormData(product); setIsProductModalOpen(true); }} className="p-2 bg-white text-blue-600 rounded-full shadow"><Edit3 size={18}/></button>
-                      <button onClick={() => requestDeleteProduct(product.id)} className="p-2 bg-white text-red-600 rounded-full shadow"><Trash2 size={18}/></button>
-                    </div>
-                  )}
-                </div>
-                <div className="p-6 flex flex-col flex-grow">
-                  <h3 className="font-bold text-xl mb-2">{product.name}</h3>
-                  <p className="text-sm text-gray-500 mb-4 flex-grow">{product.description}</p>
-                  <div className="pt-4 border-t">
-                    <span className="font-extrabold text-2xl mb-4 block">{formatPrice(product.price)}</span>
-                    {!isAdminMode && (
-                      <button onClick={() => openWhatsApp(product.name)} className="w-full py-3 bg-[#25D366] text-white font-bold rounded-xl flex justify-center gap-2"><MessageCircle size={22} /> Cotizar</button>
+          {products.length === 0 ? (
+            <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-gray-200">
+              <ShoppingBag size={56} className="mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-bold text-gray-900">No hay productos cargados</h3>
+              <p className="text-gray-500 mt-1">
+                {isAdminMode ? 'Comienza a cargar tu inventario presionando el botón "Añadir Producto"' : 'Pronto subiremos nuestras novedades.'}
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {products.map(product => (
+                <div key={product.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-full group relative">
+                  
+                  <div className="relative aspect-square bg-gray-50 overflow-hidden">
+                    {product.image ? (
+                      <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                        <ImageIcon size={48} className="mb-2" />
+                        <span className="text-xs font-semibold">Sin imagen</span>
+                      </div>
+                    )}
+                    
+                    {isAdminMode && (
+                      <div className="absolute top-3 right-3 flex gap-2">
+                        <button onClick={() => handleOpenProductModal(product)} className="p-2.5 bg-white/90 backdrop-blur text-blue-600 rounded-full shadow hover:bg-white transition-all">
+                          <Edit3 size={16} />
+                        </button>
+                        <button onClick={() => requestDeleteProduct(product.id)} className="p-2.5 bg-white/90 backdrop-blur text-red-600 rounded-full shadow hover:bg-white transition-all">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     )}
                   </div>
+
+                  <div className="p-6 flex flex-col flex-grow">
+                    <h3 className="font-bold text-gray-900 text-xl mb-2 line-clamp-1 leading-tight">{product.name}</h3>
+                    <p className="text-sm text-gray-500 mb-5 flex-grow line-clamp-2 leading-relaxed">{product.description}</p>
+                    
+                    <div className="mt-auto pt-4 border-t border-gray-100">
+                      <div className="mb-4 flex flex-col">
+                         <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">Precio de Lanzamiento</span>
+                         <span className="font-extrabold text-2xl text-gray-900 tracking-tight">
+                          {formatPrice(product.price)}
+                        </span>
+                      </div>
+
+                      {!isAdminMode && (
+                        <button 
+                          onClick={() => openWhatsApp(product.name)}
+                          className="w-full py-3.5 text-white text-base font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                          style={{ backgroundColor: storeInfo.secondaryColor }}
+                        >
+                          <MessageCircle size={22} />
+                          Cotizar por WhatsApp
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                 </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* SECCIÓN SOBRE NOSOTROS */}
+        <section className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 flex flex-col md:flex-row items-stretch">
+          <div className="md:w-1/2 relative group min-h-[350px]">
+            {storeInfo.aboutImage ? (
+              <img src={storeInfo.aboutImage} alt="Sobre Nosotros" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-blue-50 flex items-center justify-center"><ImageIcon className="text-blue-200" size={64}/></div>
+            )}
+            {isAdminMode && (
+              <div 
+                onClick={() => aboutImageInputRef.current?.click()}
+                className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white"
+              >
+                <Camera size={32} className="mb-2 animate-pulse" />
+                <span className="font-bold text-sm">Cambiar Imagen Corporativa</span>
+                <input type="file" ref={aboutImageInputRef} className="hidden" accept="image/*" onChange={handleAboutImageChange}/>
               </div>
-            ))}
+            )}
+          </div>
+          <div className="md:w-1/2 p-8 md:p-12 flex flex-col justify-center">
+            <h2 className="text-3xl font-bold text-gray-900 mb-6">Tu confianza es nuestra prioridad</h2>
+            {isAdminMode ? (
+              <textarea 
+                value={storeInfo.aboutText}
+                onChange={async (e) => await updateDoc(doc(db, "config", "store"), { aboutText: e.target.value })}
+                className="w-full h-64 p-4 bg-yellow-50 border border-yellow-300 rounded-2xl text-gray-700 leading-relaxed focus:outline-none resize-none"
+              />
+            ) : (
+              <p className="text-gray-600 leading-relaxed text-lg whitespace-pre-line">
+                {storeInfo.aboutText}
+              </p>
+            )}
           </div>
         </section>
 
-        {/* SOBRE NOSOTROS */}
-        <section className="bg-white rounded-3xl overflow-hidden shadow-sm border border-gray-100 flex flex-col md:flex-row">
-          <div className="md:w-1/2 relative group">
-            <img src={storeInfo.aboutImage} className="w-full h-full object-cover min-h-[300px]" />
-            {isAdminMode && (
-              <div onClick={() => aboutImageInputRef.current?.click()} className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer text-white">
-                <Camera size={32} /><span>Cambiar Imagen</span>
-                <input type="file" ref={aboutImageInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, (res) => setStoreInfo({...storeInfo, aboutImage: res}))}/>
-              </div>
-            )}
+        {/* SECCIÓN SEGUROS Y GARANTÍA (TRUST BADGES) */}
+        <section className="py-8 bg-white rounded-3xl border border-gray-100 shadow-sm p-8 md:p-12">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold text-gray-900">¿Por qué comprar con nosotros?</h2>
+            <p className="text-gray-500 mt-2">Hacemos que adquirir tecnología de punta sea un proceso transparente y agradable.</p>
           </div>
-          <div className="md:w-1/2 p-8 md:p-12">
-            <h2 className="text-3xl font-bold mb-6">Tu confianza es nuestra prioridad</h2>
-            {isAdminMode ? (
-              <textarea value={storeInfo.aboutText} onChange={(e) => setStoreInfo({...storeInfo, aboutText: e.target.value})} className="w-full h-48 p-4 bg-yellow-50 rounded-xl outline-none" />
-            ) : (
-              <p className="text-gray-600 leading-relaxed text-lg">{storeInfo.aboutText}</p>
-            )}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-4">
+                <ShieldCheck size={32} />
+              </div>
+              <h3 className="font-bold text-gray-900 mb-2">Garantía Real</h3>
+              <p className="text-gray-600 text-sm">Todos nuestros productos cuentan con garantía directa para cubrir fallas técnicas.</p>
+            </div>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-green-50 rounded-2xl flex items-center justify-center text-green-600 mb-4">
+                <Truck size={32} />
+              </div>
+              <h3 className="font-bold text-gray-900 mb-2">Envíos Asegurados</h3>
+              <p className="text-gray-600 text-sm">Enviamos a toda Colombia de manera segura con números de guía rastreables.</p>
+            </div>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 mb-4">
+                <Headphones size={32} />
+              </div>
+              <h3 className="font-bold text-gray-900 mb-2">Acompañamiento Postventa</h3>
+              <p className="text-gray-600 text-sm">¿Dudas de conexión? Escríbenos por WhatsApp para soporte inmediato.</p>
+            </div>
           </div>
         </section>
+
+        {/* SECCIÓN RESEÑAS DE CLIENTES */}
+        <section className="py-4">
+          <div className="flex justify-between items-end mb-8">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900">Opiniones de Compradores</h2>
+              <p className="text-gray-500 mt-1">Nuestra reputación se construye con clientes felices.</p>
+            </div>
+            {isAdminMode && (
+              <button 
+                onClick={() => setIsReviewModalOpen(true)}
+                className="text-blue-600 font-bold hover:bg-blue-50 px-4 py-2 rounded-xl transition-all flex items-center gap-2"
+              >
+                <Plus size={18} /> Añadir Reseña
+              </button>
+            )}
+          </div>
+          
+          {reviews.length === 0 ? (
+            <p className="text-center py-8 text-gray-500 italic">No hay opiniones publicadas todavía.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {reviews.map(review => (
+                <div key={review.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative group">
+                  <div className="flex text-yellow-400 mb-3">
+                    {[...Array(review.rating)].map((_, i) => <Star key={i} size={18} fill="currentColor" />)}
+                  </div>
+                  <p className="text-gray-700 italic mb-4">"{review.text}"</p>
+                  <p className="font-bold text-gray-900">- {review.author}</p>
+                  
+                  {isAdminMode && (
+                    <button 
+                      onClick={() => requestDeleteReview(review.id)}
+                      className="absolute top-4 right-4 p-2 bg-red-50 text-red-600 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
       </main>
 
       {/* PIE DE PÁGINA */}
-      <footer className="bg-gray-900 text-gray-300 pt-16 mt-10 relative">
-        <div className="max-w-5xl mx-auto px-4 pb-12">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 border-b border-gray-800 pb-12">
-            <div>
-              <h3 className="text-white font-bold text-xl mb-6">Contacto</h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-3"><Phone size={20} /> {isAdminMode ? <input value={storeInfo.phone} onChange={(e) => setStoreInfo({...storeInfo, phone: e.target.value})} className="bg-gray-800 text-white px-2 rounded" /> : <span>+{storeInfo.phone}</span>}</div>
-                <div className="flex items-center gap-3"><AtSign size={20} /> {isAdminMode ? <input value={storeInfo.instagram} onChange={(e) => setStoreInfo({...storeInfo, instagram: e.target.value})} className="bg-gray-800 text-white px-2 rounded" /> : <span>{storeInfo.instagram}</span>}</div>
+      <footer className="bg-gray-900 text-gray-300 pt-16 mt-16 relative">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 border-b border-gray-800 pb-12">
+            
+            <div className="space-y-4">
+              <h3 className="text-white font-bold text-lg mb-2">Contacto de la Tienda</h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Phone size={18} className="text-gray-500 shrink-0" />
+                  {isAdminMode ? (
+                    <input 
+                      type="text" 
+                      value={storeInfo.phone} 
+                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { phone: e.target.value })} 
+                      className="bg-gray-800 text-white px-2 py-1 rounded text-sm w-full" 
+                    />
+                  ) : <span className="text-sm">+{storeInfo.phone}</span>}
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  <AtSign size={18} className="text-gray-500 shrink-0" />
+                  {isAdminMode ? (
+                    <input 
+                      type="text" 
+                      value={storeInfo.instagram} 
+                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { instagram: e.target.value })} 
+                      className="bg-gray-800 text-white px-2 py-1 rounded text-sm w-full" 
+                    />
+                  ) : <span className="text-sm">{storeInfo.instagram}</span>}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Mail size={18} className="text-gray-500 shrink-0" />
+                  {isAdminMode ? (
+                    <input 
+                      type="text" 
+                      value={storeInfo.email} 
+                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { email: e.target.value })} 
+                      className="bg-gray-800 text-white px-2 py-1 rounded text-sm w-full" 
+                    />
+                  ) : <span className="text-sm">{storeInfo.email}</span>}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Clock size={18} className="text-gray-500 shrink-0" />
+                  {isAdminMode ? (
+                    <input 
+                      type="text" 
+                      value={storeInfo.schedule} 
+                      onChange={async (e) => await updateDoc(doc(db, "config", "store"), { schedule: e.target.value })} 
+                      className="bg-gray-800 text-white px-2 py-1 rounded text-sm w-full" 
+                    />
+                  ) : <span className="text-sm">{storeInfo.schedule}</span>}
+                </div>
               </div>
             </div>
-            <div>
-              <h3 className="text-white font-bold text-xl mb-6">Compra Segura</h3>
-              <p className="text-sm text-gray-400">Todos nuestros productos cuentan con garantía y acompañamiento postventa.</p>
+
+            <div className="space-y-4">
+              <h3 className="text-white font-bold text-lg mb-2">Medios de Pago</h3>
+              <p className="text-sm text-gray-400">Selecciona el método de tu preferencia al momento de cotizar:</p>
+              <ul className="space-y-2.5 text-sm">
+                <li className="flex items-center gap-2"><CheckCircle size={16} className="text-green-500 shrink-0" /> Nequi</li>
+                <li className="flex items-center gap-2"><CheckCircle size={16} className="text-green-500 shrink-0" /> Daviplata</li>
+                <li className="flex items-center gap-2"><CheckCircle size={16} className="text-green-500 shrink-0" /> Transferencia Bancaria</li>
+                <li className="flex items-center gap-2"><CheckCircle size={16} className="text-green-500 shrink-0" /> Contraentrega (Nacional)</li>
+              </ul>
             </div>
+
+            <div className="space-y-4">
+              <h3 className="text-white font-bold text-lg mb-2">Compra Protegida</h3>
+              <div className="flex items-start gap-3">
+                <ShieldCheck size={28} className="text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-sm text-gray-400">Sitio 100% Seguro. Todos los datos de contacto y productos cargados son auténticos de nuestra tienda oficial.</p>
+              </div>
+            </div>
+
           </div>
-          <div className="pt-8 flex justify-between text-sm text-gray-500 relative">
-            {/* AREA TOQUE SECRETO (Izquierda) */}
-            <div onClick={handleSecretKnock} className="absolute bottom-0 left-0 w-24 h-24 cursor-default z-50 bg-transparent" title="Área Segura" />
+
+          <div className="pt-8 flex flex-col md:flex-row justify-between items-center text-xs text-gray-500 gap-4 relative">
             <p>© {new Date().getFullYear()} {storeInfo.name}. Todos los derechos reservados.</p>
-            <p>Experiencia de compra protegida.</p>
+            <p>Plataforma autogestionable.</p>
+            
+            {/* TOQUE SECRETO EN EL EXTREMO INFERIOR IZQUIERDO */}
+            <div 
+              onClick={handleSecretKnock}
+              className="absolute bottom-0 left-0 w-24 h-24 cursor-default z-50 bg-transparent"
+              title="Acceso de Seguridad"
+            />
           </div>
+
         </div>
       </footer>
 
-      {/* BOTÓN WHATSAPP */}
+      {/* BOTÓN WHATSAPP FLOTANTE */}
       {!isAdminMode && (
-        <button onClick={() => openWhatsApp()} className="fixed bottom-6 right-6 p-4 bg-[#25D366] text-white rounded-full shadow-2xl z-40"><MessageCircle size={28} /></button>
+        <button
+          onClick={() => openWhatsApp()}
+          className="fixed bottom-6 right-6 p-4 text-white rounded-full shadow-2xl hover:brightness-110 hover:-translate-y-1 transition-all z-40 flex items-center gap-2 group"
+          style={{ backgroundColor: storeInfo.secondaryColor }}
+        >
+          <MessageCircle size={28} />
+          <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-300 ease-in-out font-bold text-sm">
+            Chat Directo
+          </span>
+        </button>
       )}
 
-      {/* MODAL DE LOGIN ADMIN */}
+      {/* SPIN INDICADOR DE COMPRESIÓN */}
+      {compressing && (
+        <div className="fixed bottom-6 left-6 bg-white border border-gray-100 rounded-2xl p-4 shadow-xl flex items-center gap-3 z-50 animate-pulse">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+          <span className="text-xs font-bold text-gray-700">Comprimiendo imagen localmente...</span>
+        </div>
+      )}
+
+      {/* MODAL DE PERSONALIZACIÓN DE TEMA */}
+      {showThemeModal && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl relative">
+            <button onClick={() => setShowThemeModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-gray-100 rounded-full p-1">
+              <X size={20} />
+            </button>
+            
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <Palette className="text-blue-600" />
+              Diseño de la Tienda
+            </h2>
+            
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <Type size={16} /> Tipografía General
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  {FONT_OPTIONS.map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={async () => await updateDoc(doc(db, "config", "store"), { fontFamily: opt.id })}
+                      className={`p-3 rounded-xl border text-left text-sm font-medium transition-all ${storeInfo.fontFamily === opt.id ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-3 flex items-center gap-2">
+                  <Palette size={16} /> Paletas Sugeridas
+                </label>
+                <div className="space-y-2">
+                  {COLOR_PALETTES.map((pal, idx) => (
+                    <button
+                      key={idx}
+                      onClick={async () => await updateDoc(doc(db, "config", "store"), { primaryColor: pal.primary, secondaryColor: pal.secondary })}
+                      className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all"
+                    >
+                      <div className="flex gap-1 shrink-0">
+                        <div className="w-5 h-5 rounded-full" style={{ backgroundColor: pal.primary }} />
+                        <div className="w-5 h-5 rounded-full" style={{ backgroundColor: pal.secondary }} />
+                      </div>
+                      <span className="text-xs font-semibold text-gray-700">{pal.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE LOGIN DE SEGURIDAD */}
       {showLoginModal && (
-        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full relative">
-            <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4"><X size={24} /></button>
-            <h2 className="text-2xl font-bold text-center mb-6">Acceso Admin</h2>
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl relative">
+            <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-800">
+              <X size={24} />
+            </button>
+            <div className="text-center mb-6">
+              <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-4">
+                <Lock size={32} />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">Acceso de Seguridad</h2>
+              <p className="text-gray-500 text-sm mt-1">Inserta el PIN del dueño de la tienda para realizar cambios.</p>
+            </div>
             <form onSubmit={handleLoginSubmit}>
-              <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="••••" className="w-full text-center text-2xl tracking-[0.5em] p-3 border rounded-xl mb-4 outline-none" autoFocus />
-              {loginError && <p className="text-red-500 text-center mb-4 text-sm">PIN incorrecto.</p>}
-              <button type="submit" className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl">Desbloquear</button>
+              <div className="mb-4">
+                <input 
+                  type="password" 
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value)}
+                  placeholder="••••"
+                  className="w-full text-center text-2xl tracking-[0.5em] px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-blue-500 outline-none transition-colors font-mono"
+                  autoFocus
+                />
+                {loginError && <p className="text-red-500 text-sm text-center mt-2">PIN incorrecto. Intenta nuevamente.</p>}
+              </div>
+              <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-md">
+                Desbloquear Consola
+              </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* MODAL DE PRODUCTO */}
+      {/* MODAL DE AGREGAR/EDITAR PRODUCTO */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold mb-6">{editingProduct ? 'Editar' : 'Nuevo'}</h2>
-            <form onSubmit={handleSaveProduct} className="space-y-4">
-              <input required type="text" value={productFormData.name} onChange={(e) => setProductFormData({...productFormData, name: e.target.value})} placeholder="Nombre" className="w-full p-3 border rounded-xl" />
-              <input required type="number" value={productFormData.price} onChange={(e) => setProductFormData({...productFormData, price: e.target.value})} placeholder="Precio" className="w-full p-3 border rounded-xl" />
-              <textarea value={productFormData.description} onChange={(e) => setProductFormData({...productFormData, description: e.target.value})} placeholder="Descripción" className="w-full p-3 border rounded-xl" />
-              <div className="flex gap-2">
-                 <button type="button" onClick={() => setIsProductModalOpen(false)} className="flex-1 py-3 bg-gray-200 rounded-xl font-bold">Cancelar</button>
-                 <button type="submit" className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold">Guardar</button>
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setIsProductModalOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-gray-950 bg-gray-100 rounded-full p-1">
+              <X size={20} />
+            </button>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">{editingProduct ? 'Editar Producto' : 'Nuevo Producto'}</h2>
+            <form onSubmit={handleSaveProduct} className="space-y-5">
+              
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Foto del producto</label>
+                <div 
+                  onClick={() => productInputRef.current?.click()} 
+                  className="border-2 border-dashed border-gray-300 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors h-44 group relative overflow-hidden"
+                >
+                  {productFormData.image ? (
+                    <img src={productFormData.image} alt="Preview" className="w-full h-full object-cover absolute inset-0 group-hover:opacity-50 transition-opacity" />
+                  ) : (
+                    <>
+                      <Upload size={32} className="text-gray-400 mb-2 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs font-semibold text-gray-500">Cargar Imagen Local</span>
+                    </>
+                  )}
+                  <input 
+                    type="file" 
+                    ref={productInputRef} 
+                    className="hidden" 
+                    accept="image/*" 
+                    onChange={async (e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        try {
+                          const base64 = await compressAndConvertImage(file, 500, 500, 0.6);
+                          setProductFormData({ ...productFormData, image: base64 });
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Nombre</label>
+                <input required type="text" value={productFormData.name} onChange={(e) => setProductFormData({...productFormData, name: e.target.value})} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Precio (COP)</label>
+                <input required type="number" value={productFormData.price} onChange={(e) => setProductFormData({...productFormData, price: e.target.value})} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Descripción</label>
+                <textarea rows="3" value={productFormData.description} onChange={(e) => setProductFormData({...productFormData, description: e.target.value})} className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all text-sm" />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                 <button type="button" onClick={() => setIsProductModalOpen(false)} className="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-sm text-gray-700">Cancelar</button>
+                 <button type="submit" className="flex-1 py-3 text-white rounded-xl font-bold text-sm shadow-md" style={{ backgroundColor: storeInfo.primaryColor }}>Guardar Cambios</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {confirmDialog.isOpen && <ConfirmModal />}
+      {/* MODAL PARA AGREGAR RESEÑAS */}
+      {isReviewModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl relative">
+            <button onClick={() => setIsReviewModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900">
+              <X size={20} />
+            </button>
+            <h2 className="text-xl font-bold text-gray-900 mb-6">Añadir Reseña de Cliente</h2>
+            <form onSubmit={handleSaveReview} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Nombre</label>
+                <input required type="text" value={reviewFormData.author} onChange={(e) => setReviewFormData({...reviewFormData, author: e.target.value})} className="w-full px-4 py-2 border rounded-xl text-sm" placeholder="Ej: Juan P." />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Calificación (Estrellas)</label>
+                <select value={reviewFormData.rating} onChange={(e) => setReviewFormData({...reviewFormData, rating: parseInt(e.target.value)})} className="w-full px-4 py-2 border rounded-xl text-sm">
+                  <option value="5">⭐⭐⭐⭐⭐ (5/5)</option>
+                  <option value="4">⭐⭐⭐⭐ (4/5)</option>
+                  <option value="3">⭐⭐⭐ (3/5)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Opinión</label>
+                <textarea required rows="3" value={reviewFormData.text} onChange={(e) => setReviewFormData({...reviewFormData, text: e.target.value})} className="w-full px-4 py-2 border rounded-xl text-sm resize-none" placeholder="Lo que dijo el cliente..." />
+              </div>
+              <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm shadow-md">Publicar Opinión</button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+              <Info className="h-6 w-6 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Confirmar Acción</h3>
+            <p className="text-sm text-gray-500 mb-6">{confirmDialog.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDialog({ isOpen: false, action: null, message: '' })} className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium">Cancelar</button>
+              <button onClick={confirmDialog.action} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium shadow-sm">Proceder</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
