@@ -36,14 +36,14 @@ try {
   console.warn("Firebase no se pudo inicializar. Usando base de datos local de respaldo.", error);
 }
 
-// Estados iniciales elegantes
+// Estados iniciales elegantes con tus datos reales de TechMode
 const DEFAULT_STORE_INFO = {
-  name: 'Mi Emprendimiento Tech',
+  name: 'TechMode',
   description: 'Los mejores dispositivos y accesorios de audio.',
   logo: '',
-  phone: '573001234567',
-  instagram: '@mi.marca.tech',
-  email: 'contacto@mitienda.com',
+  phone: '573242744430',
+  instagram: '@techmode_plus',
+  email: 'techmodeplus18@gmail.com',
   schedule: 'Lunes a Sábado: 8am - 6pm',
   bannerTitle: 'Lleva tu música a otro nivel',
   bannerSubtitle: 'Descubre nuestra línea exclusiva de audífonos y accesorios premium con garantía.',
@@ -51,7 +51,7 @@ const DEFAULT_STORE_INFO = {
   aboutText: 'En nuestra tienda nos apasiona la tecnología y trabajamos para ofrecerte productos de calidad, atención confiable y una experiencia de compra segura. Brindamos asesoría personalizada para ayudarte a elegir los audífonos y dispositivos que mejor se adapten a tus necesidades. Además, realizamos envíos a toda Colombia, llevando tecnología hasta tu puerta de forma rápida y segura. Tu satisfacción y confianza son nuestra prioridad. 🚀📦',
   aboutImage: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
   primaryColor: '#3b82f6', 
-  secondaryColor: '#10b981', 
+  secondaryColor: '#ec4899', 
   fontFamily: 'font-sans',
   bannerAlign: 'object-center',
   bannerOverlayOpacity: 0.5
@@ -120,6 +120,9 @@ export default function App() {
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [pin, setPin] = useState('');
   const [loginError, setLoginError] = useState(false);
+
+  // Estado para controlar la apertura de las políticas de privacidad y garantías
+  const [activePolicyModal, setActivePolicyModal] = useState(null); // 'privacy' | 'warranty' | null
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
@@ -1016,6 +1019,23 @@ export default function App() {
 
           <div className="pt-8 flex flex-col md:flex-row justify-between items-center text-xs text-gray-500 gap-4 relative">
             <p>© {new Date().getFullYear()} {storeInfo.name}. Todos los derechos reservados.</p>
+            
+            <div className="flex gap-4 z-10">
+              <button 
+                onClick={() => setActivePolicyModal('privacy')} 
+                className="hover:text-white hover:underline transition-all"
+              >
+                Política de Privacidad
+              </button>
+              <span>|</span>
+              <button 
+                onClick={() => setActivePolicyModal('warranty')} 
+                className="hover:text-white hover:underline transition-all"
+              >
+                Garantías y Envíos
+              </button>
+            </div>
+
             <p>Plataforma autogestionable.</p>
             
             {/* TOQUE SECRETO EN EL EXTREMO INFERIOR IZQUIERDO */}
@@ -1409,6 +1429,103 @@ export default function App() {
               <button onClick={() => setConfirmDialog({ isOpen: false, action: null, message: '' })} className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl font-medium">Cancelar</button>
               <button onClick={confirmDialog.action} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl font-medium shadow-sm">Proceder</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ELEGANTE DE POLÍTICAS (HABEAS DATA Y GARANTÍAS) */}
+      {activePolicyModal && (
+        <div className="fixed inset-0 bg-black/70 z-[80] flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl relative max-h-[85vh] flex flex-col">
+            
+            <button 
+              onClick={() => setActivePolicyModal(null)} 
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-gray-100 rounded-full p-2"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="overflow-y-auto pr-2 space-y-5">
+              {activePolicyModal === 'privacy' ? (
+                <>
+                  <div className="flex items-center gap-3 text-blue-600 mb-2">
+                    <ShieldCheck size={32} />
+                    <h2 className="text-2xl font-bold text-gray-950">Política de Privacidad</h2>
+                  </div>
+                  <p className="text-xs text-gray-400">Última actualización: {new Date().toLocaleDateString('es-CO')}</p>
+                  
+                  <div className="space-y-4 text-sm text-gray-600 leading-relaxed">
+                    <p>
+                      En <b>{storeInfo.name}</b>, valoramos y respetamos tu privacidad. Esta política detalla cómo tratamos tu información en cumplimiento de la <b>Ley 1581 de 2012 (Habeas Data de Colombia)</b>.
+                    </p>
+                    <div>
+                      <h4 className="font-bold text-gray-900 mb-1">1. Recolección de Datos</h4>
+                      <p>
+                        Únicamente recopilamos los datos que voluntariamente nos proporcionas al momento de iniciar una cotización o entablar contacto vía WhatsApp, tales como: nombre, número de teléfono y producto de interés.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900 mb-1">2. Uso de la Información</h4>
+                      <p>
+                        La información se utiliza con la única finalidad de brindarte asesoría personalizada, coordinar la entrega de tus pedidos y resolver soporte técnico de los productos adquiridos. No compartimos tus datos con terceros bajo ninguna circunstancia.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900 mb-1">3. Meta Pixel (Seguimiento)</h4>
+                      <p>
+                        Este sitio web utiliza la tecnología de rastreo de <b>Meta Pixel</b> para medir el rendimiento de nuestros anuncios en Facebook e Instagram y optimizar nuestro catálogo. Meta puede procesar datos de navegación generales para personalizar tu experiencia publicitaria de forma anónima.
+                      </p>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900 mb-1">4. Tus Derechos</h4>
+                      <p>
+                        Tienes derecho a conocer, actualizar y rectificar tus datos personales en cualquier momento. Si deseas que eliminemos tu registro de contacto, puedes solicitarlo de forma gratuita escribiéndonos directamente a <b>{storeInfo.email}</b>.
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 text-pink-600 mb-2">
+                    <Truck size={32} />
+                    <h2 className="text-2xl font-bold text-gray-950">Envíos y Garantías</h2>
+                  </div>
+                  <p className="text-xs text-gray-400">Tu tranquilidad es nuestra prioridad</p>
+                  
+                  <div className="space-y-4 text-sm text-gray-600 leading-relaxed">
+                    <div>
+                      <h4 className="font-bold text-gray-900 mb-1">🚚 Políticas de Envío Nacional</h4>
+                      <p>
+                        Realizamos despachos diarios a nivel nacional en Colombia utilizando transportadoras de confianza (Servientrega, Interrapidisimo, Envía).
+                      </p>
+                      <ul className="list-disc pl-5 mt-2 space-y-1">
+                        <li><b>Tiempos de Entrega:</b> Ciudades principales de 1 a 3 días hábiles. Regiones apartadas de 3 a 5 días hábiles.</li>
+                        <li><b>Número de Guía:</b> Te proporcionaremos el número de guía inmediatamente después del despacho para que rastrees tu paquete en tiempo real.</li>
+                      </ul>
+                    </div>
+                    
+                    <div>
+                      <h4 className="font-bold text-gray-900 mb-1">🛡️ Términos de Garantía de Tecnología</h4>
+                      <p>
+                        Todos nuestros dispositivos cuentan con garantía oficial para brindarte seguridad completa con tu inversión:
+                      </p>
+                      <ul className="list-disc pl-5 mt-2 space-y-1">
+                        <li>La garantía cubre estrictamente <b>defectos de fábrica</b> (problemas de encendido, fallas en la batería o problemas del software nativo).</li>
+                        <li>No cubre daños causados por mal uso, golpes, humedad o manipulación por personal no autorizado.</li>
+                        <li>Para hacer efectiva una garantía, escríbenos a nuestro WhatsApp principal (<b>+{storeInfo.phone}</b>) presentando tu comprobante de compra.</li>
+                      </ul>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button 
+              onClick={() => setActivePolicyModal(null)}
+              className="mt-6 w-full py-3 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-gray-800 transition-colors shadow-md shrink-0"
+            >
+              Entendido, Cerrar
+            </button>
           </div>
         </div>
       )}
