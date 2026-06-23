@@ -2,14 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getFirestore, doc, onSnapshot, setDoc, collection, 
-  addDoc, updateDoc, deleteDoc 
+  updateDoc, deleteDoc 
 } from 'firebase/firestore';
 import { 
   ShoppingBag, MessageCircle, Edit3, Trash2, 
   Plus, Image as ImageIcon, Save, X, Settings, 
   Store, Phone, ShieldCheck, Truck, Headphones,
   Star, CheckCircle, Clock, Mail, AtSign,
-  Camera, Lock, Info, LogOut, Palette, Type, Upload, WifiOff
+  Camera, Lock, Info, LogOut, Palette, Type, Upload, WifiOff,
+  Maximize2
 } from 'lucide-react';
 
 // --- CONFIGURACIÓN DE TU FIREBASE PROPORCIONADA ---
@@ -61,14 +62,20 @@ const DEFAULT_PRODUCTS = [
     id: 'prod-1',
     name: 'Audífonos Inalámbricos Pro',
     price: 120000,
-    image: 'https://images.unsplash.com/photo-1606220588913-b3aecb4b2075?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+    images: [
+      'https://images.unsplash.com/photo-1606220588913-b3aecb4b2075?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+      'https://images.unsplash.com/photo-1546435770-a3e426bf472b?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80'
+    ],
     description: 'Cancelación de ruido activa, sonido de alta fidelidad y batería de 24 horas.'
   },
   {
     id: 'prod-2',
     name: 'Smartwatch Serie X',
     price: 250000,
-    image: 'https://images.unsplash.com/photo-1579586337278-3befd40fd17a?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+    images: [
+      'https://images.unsplash.com/photo-1579586337278-3befd40fd17a?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80',
+      'https://images.unsplash.com/photo-1517502884422-41eaaced0168?ixlib=rb-4.0.3&auto=format&fit=crop&w=600&q=80'
+    ],
     description: 'Monitor de ritmo cardíaco, notificaciones inteligentes y resistencia al agua IP68.'
   }
 ];
@@ -116,13 +123,17 @@ export default function App() {
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
-  const [productFormData, setProductFormData] = useState({ name: '', price: '', description: '', image: '' });
+  const [productFormData, setProductFormData] = useState({ name: '', price: '', description: '', images: [] });
 
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewFormData, setReviewFormData] = useState({ author: '', text: '', rating: 5 });
 
-  // Nuevo estado para abrir el modal del cliente con detalles
+  // Detalle del producto e índice de imagen activa en el carrusel
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  // Ampliación de imagen en pantalla completa
+  const [zoomImage, setZoomImage] = useState(null);
 
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, action: null, message: '' });
   const [compressing, setCompressing] = useState(false);
@@ -337,7 +348,6 @@ export default function App() {
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
-    // Cambia '9876' por la contraseña de 4 números que tú quieras
     if (pin === '9876') { 
       setIsAdminMode(true);
       setShowLoginModal(false);
@@ -350,10 +360,12 @@ export default function App() {
   const handleOpenProductModal = (product = null) => {
     if (product) {
       setEditingProduct(product);
-      setProductFormData({ ...product });
+      // Garantizar que use images (arreglo) para la edición
+      const initialImages = product.images || (product.image ? [product.image] : []);
+      setProductFormData({ ...product, images: initialImages });
     } else {
       setEditingProduct(null);
-      setProductFormData({ name: '', price: '', description: '', image: '' });
+      setProductFormData({ name: '', price: '', description: '', images: [] });
     }
     setIsProductModalOpen(true);
   };
@@ -466,7 +478,6 @@ export default function App() {
     if (productName) {
       message = `¡Hola! Me interesa cotizar o comprar el producto: *${productName}*. ¿Me podrías dar más información?`;
       
-      // 🎯 Registra en Meta que se interesaron en un producto específico (Lead)
       if (window.fbq) {
         window.fbq('track', 'Lead', {
           content_name: productName,
@@ -474,7 +485,6 @@ export default function App() {
         });
       }
     } else {
-      // 🎯 Registra en Meta un contacto general de asesoría (Contact)
       if (window.fbq) {
         window.fbq('track', 'Contact', {
           status: 'Click WhatsApp General'
@@ -510,6 +520,22 @@ export default function App() {
       </div>
     );
   }
+
+  // Helper para extraer la foto de portada del producto
+  const getProductCoverImage = (product) => {
+    if (product.images && product.images.length > 0) {
+      return product.images[0];
+    }
+    return product.image || '';
+  };
+
+  // Helper para extraer la galería de imágenes del producto
+  const getProductImageGallery = (product) => {
+    if (product.images && product.images.length > 0) {
+      return product.images;
+    }
+    return product.image ? [product.image] : [];
+  };
 
   return (
     <div className={`min-h-screen bg-gray-50/50 flex flex-col ${storeInfo.fontFamily || 'font-sans'} selection:bg-blue-200`}>
@@ -722,74 +748,77 @@ export default function App() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {products.map(product => (
-                <div key={product.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-full group relative">
-                  
-                  <div 
-                    onClick={() => !isAdminMode && setSelectedProduct(product)}
-                    className={`relative aspect-square bg-gray-50 overflow-hidden ${!isAdminMode ? 'cursor-pointer' : ''}`}
-                  >
-                    {product.image ? (
-                      <img src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
-                        <ImageIcon size={48} className="mb-2" />
-                        <span className="text-xs font-semibold">Sin imagen</span>
-                      </div>
-                    )}
+              {products.map(product => {
+                const coverImage = getProductCoverImage(product);
+                return (
+                  <div key={product.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-full group relative">
                     
-                    {isAdminMode && (
-                      <div className="absolute top-3 right-3 flex gap-2">
-                        <button onClick={() => handleOpenProductModal(product)} className="p-2.5 bg-white/90 backdrop-blur text-blue-600 rounded-full shadow hover:bg-white transition-all">
-                          <Edit3 size={16} />
-                        </button>
-                        <button onClick={() => requestDeleteProduct(product.id)} className="p-2.5 bg-white/90 backdrop-blur text-red-600 rounded-full shadow hover:bg-white transition-all">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-6 flex flex-col flex-grow">
                     <div 
-                      onClick={() => !isAdminMode && setSelectedProduct(product)}
-                      className={!isAdminMode ? 'cursor-pointer' : ''}
+                      onClick={() => { if (!isAdminMode) { setSelectedProduct(product); setActiveImageIndex(0); } }}
+                      className={`relative aspect-square bg-gray-50 overflow-hidden ${!isAdminMode ? 'cursor-pointer' : ''}`}
                     >
-                      <h3 className="font-bold text-gray-900 text-xl mb-2 line-clamp-1 leading-tight group-hover:text-blue-600 transition-colors">{product.name}</h3>
-                      <p className="text-sm text-gray-500 mb-5 flex-grow line-clamp-2 leading-relaxed">{product.description}</p>
-                    </div>
-                    
-                    <div className="mt-auto pt-4 border-t border-gray-100">
-                      <div className="mb-4 flex flex-col">
-                         <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">Precio de Lanzamiento</span>
-                         <span className="font-extrabold text-2xl text-gray-900 tracking-tight">
-                          {formatPrice(product.price)}
-                        </span>
-                      </div>
-
-                      {!isAdminMode && (
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => openWhatsApp(product.name)}
-                            className="flex-1 py-3.5 text-white text-base font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm"
-                            style={{ backgroundColor: storeInfo.secondaryColor }}
-                          >
-                            <MessageCircle size={22} />
-                            Cotizar
+                      {coverImage ? (
+                        <img src={coverImage} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                          <ImageIcon size={48} className="mb-2" />
+                          <span className="text-xs font-semibold">Sin imagen</span>
+                        </div>
+                      )}
+                      
+                      {isAdminMode && (
+                        <div className="absolute top-3 right-3 flex gap-2 z-10">
+                          <button onClick={() => handleOpenProductModal(product)} className="p-2.5 bg-white/90 backdrop-blur text-blue-600 rounded-full shadow hover:bg-white transition-all">
+                            <Edit3 size={16} />
                           </button>
-                          <button 
-                            onClick={() => setSelectedProduct(product)}
-                            className="px-4 py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl transition-all"
-                          >
-                            Detalles
+                          <button onClick={() => requestDeleteProduct(product.id)} className="p-2.5 bg-white/90 backdrop-blur text-red-600 rounded-full shadow hover:bg-white transition-all">
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       )}
                     </div>
-                  </div>
 
-                </div>
-              ))}
+                    <div className="p-6 flex flex-col flex-grow">
+                      <div 
+                        onClick={() => { if (!isAdminMode) { setSelectedProduct(product); setActiveImageIndex(0); } }}
+                        className={!isAdminMode ? 'cursor-pointer' : ''}
+                      >
+                        <h3 className="font-bold text-gray-900 text-xl mb-2 line-clamp-1 leading-tight group-hover:text-blue-600 transition-colors">{product.name}</h3>
+                        <p className="text-sm text-gray-500 mb-5 flex-grow line-clamp-2 leading-relaxed">{product.description}</p>
+                      </div>
+                      
+                      <div className="mt-auto pt-4 border-t border-gray-100">
+                        <div className="mb-4 flex flex-col">
+                           <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-0.5">Precio de Lanzamiento</span>
+                           <span className="font-extrabold text-2xl text-gray-900 tracking-tight">
+                            {formatPrice(product.price)}
+                          </span>
+                        </div>
+
+                        {!isAdminMode && (
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => openWhatsApp(product.name)}
+                              className="flex-1 py-3.5 text-white text-base font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                              style={{ backgroundColor: storeInfo.secondaryColor }}
+                            >
+                              <MessageCircle size={22} />
+                              Cotizar
+                            </button>
+                            <button 
+                              onClick={() => { setSelectedProduct(product); setActiveImageIndex(0); }}
+                              className="px-4 py-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-bold rounded-2xl transition-all"
+                            >
+                              Detalles
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>
@@ -807,7 +836,7 @@ export default function App() {
                 onClick={() => aboutImageInputRef.current?.click()}
                 className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white"
               >
-                <Camera size={32} className="mb-2 animate-pulse" />
+                <Camera size={32} className="mb-2" />
                 <span className="font-bold text-sm">Cambiar Imagen Corporativa</span>
                 <input type="file" ref={aboutImageInputRef} className="hidden" accept="image/*" onChange={handleAboutImageChange}/>
               </div>
@@ -1022,97 +1051,146 @@ export default function App() {
         </div>
       )}
 
-      {/* VENTANA FLOTANTE DE DETALLES DE PRODUCTO (CON EFECTO ESPEJO DE DOBLE CAPA) */}
-      {selectedProduct && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl relative flex flex-col md:flex-row max-h-[90vh] md:max-h-none overflow-y-auto md:overflow-visible">
-            
-            <button 
-              onClick={() => setSelectedProduct(null)} 
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-10"
-            >
-              <X size={20} />
-            </button>
+      {/* VENTANA FLOTANTE DE DETALLES DE PRODUCTO (CON GALERÍA Y ZOOM INTERACTIVO) */}
+      {selectedProduct && (() => {
+        const productImages = getProductImageGallery(selectedProduct);
+        const activeImageUrl = productImages[activeImageIndex] || '';
 
-            {/* Lado de Imagen con Efecto de Doble Capa Espejo (Estilo Apple) */}
-            <div className="w-full md:w-1/2 aspect-square md:aspect-auto md:h-auto bg-black relative min-h-[250px] overflow-hidden flex items-center justify-center">
-              {selectedProduct.image ? (
-                <>
-                  {/* Capa de fondo muy difuminada que llena el fondo */}
-                  <img 
-                    src={selectedProduct.image} 
-                    alt="" 
-                    className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-125" 
-                  />
-                  {/* Capa de imagen real contenida completa (nunca se corta) */}
-                  <img 
-                    src={selectedProduct.image} 
-                    alt={selectedProduct.name} 
-                    className="relative z-10 max-w-full max-h-full object-contain p-4" 
-                  />
-                </>
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
-                  <ImageIcon size={64} />
-                  <span className="text-sm font-semibold mt-2">Sin imagen</span>
-                </div>
-              )}
-            </div>
+        return (
+          <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl relative flex flex-col md:flex-row max-h-[90vh] md:max-h-none overflow-y-auto md:overflow-visible">
+              
+              <button 
+                onClick={() => setSelectedProduct(null)} 
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-white/90 backdrop-blur rounded-full p-2 shadow-md z-10"
+              >
+                <X size={20} />
+              </button>
 
-            {/* Lado de Información */}
-            <div className="w-full md:w-1/2 p-6 md:p-8 flex flex-col justify-between">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Detalles del Producto</span>
-                <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mt-1 mb-3">{selectedProduct.name}</h2>
+              {/* Lado de Imagen con Carrusel y Botón de Lupa */}
+              <div className="w-full md:w-1/2 bg-black relative flex flex-col justify-between p-4 min-h-[300px]">
                 
-                <div className="mb-4">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Precio de Lanzamiento</span>
-                  <span className="text-3xl font-black text-gray-900 tracking-tight">
-                    {formatPrice(selectedProduct.price)}
-                  </span>
+                {/* Visualizador de imagen principal */}
+                <div className="relative flex-grow flex items-center justify-center overflow-hidden rounded-2xl group/image min-h-[200px]">
+                  {activeImageUrl ? (
+                    <>
+                      {/* Fondo espejo difuminado */}
+                      <img 
+                        src={activeImageUrl} 
+                        alt="" 
+                        className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-45 scale-125" 
+                      />
+                      {/* Imagen nítida real */}
+                      <img 
+                        src={activeImageUrl} 
+                        alt={selectedProduct.name} 
+                        className="relative z-10 max-w-full max-h-[220px] md:max-h-[300px] object-contain p-2 cursor-zoom-in" 
+                        onClick={() => setZoomImage(activeImageUrl)}
+                      />
+                      {/* Botón de lupa superpuesto */}
+                      <button 
+                        onClick={() => setZoomImage(activeImageUrl)}
+                        className="absolute bottom-2 right-2 bg-black/55 hover:bg-black/80 text-white p-2 rounded-full backdrop-blur-sm z-20 opacity-0 group-hover/image:opacity-100 transition-opacity"
+                        title="Ampliar Imagen"
+                      >
+                        <Maximize2 size={16} />
+                      </button>
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
+                      <ImageIcon size={64} />
+                      <span className="text-sm font-semibold mt-2">Sin imagen</span>
+                    </div>
+                  )}
                 </div>
 
-                <div className="border-t border-gray-100 pt-4 mb-6">
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Descripción</span>
-                  <p className="text-gray-600 text-sm md:text-base leading-relaxed whitespace-pre-line">
-                    {selectedProduct.description || "Este espectacular artículo no cuenta con descripción adicional, pero puedes cotizarlo o resolver tus dudas de inmediato."}
-                  </p>
-                </div>
-
-                {/* Beneficios de confianza destacados */}
-                <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-50 mb-6">
-                  <span className="text-xs font-bold text-blue-800 uppercase tracking-wider block mb-3">Beneficios con tu compra:</span>
-                  <ul className="space-y-2.5 text-xs text-gray-700">
-                    <li className="flex items-center gap-2">
-                      <ShieldCheck size={16} className="text-green-600 shrink-0" />
-                      <span><b>Garantía Oficial:</b> Cobertura ante fallas de fábrica.</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Truck size={16} className="text-green-600 shrink-0" />
-                      <span><b>Envío Seguro:</b> Cobertura a toda Colombia.</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <Headphones size={16} className="text-green-600 shrink-0" />
-                      <span><b>Soporte Postventa:</b> Soporte gratuito vía WhatsApp.</span>
-                    </li>
-                  </ul>
-                </div>
+                {/* Miniaturas de la Galería */}
+                {productImages.length > 1 && (
+                  <div className="flex gap-2 overflow-x-auto mt-3 pb-1 justify-center scrollbar-thin">
+                    {productImages.map((img, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setActiveImageIndex(i)}
+                        className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all shrink-0 ${activeImageIndex === i ? 'border-blue-500 scale-105' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                      >
+                        <img src={img} alt="" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <button 
-                onClick={() => {
-                  openWhatsApp(selectedProduct.name);
-                  setSelectedProduct(null);
-                }}
-                className="w-full py-4 text-white text-base font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg hover:brightness-110"
-                style={{ backgroundColor: storeInfo.secondaryColor }}
-              >
-                <MessageCircle size={24} />
-                Comprar por WhatsApp
-              </button>
-            </div>
+              {/* Lado de Información */}
+              <div className="w-full md:w-1/2 p-6 md:p-8 flex flex-col justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Detalles del Producto</span>
+                  <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 mt-1 mb-3">{selectedProduct.name}</h2>
+                  
+                  <div className="mb-4">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Precio de Lanzamiento</span>
+                    <span className="text-3xl font-black text-gray-900 tracking-tight">
+                      {formatPrice(selectedProduct.price)}
+                    </span>
+                  </div>
 
+                  <div className="border-t border-gray-100 pt-4 mb-6">
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Descripción</span>
+                    <p className="text-gray-600 text-sm md:text-base leading-relaxed whitespace-pre-line max-h-[120px] overflow-y-auto pr-1">
+                      {selectedProduct.description || "Este espectacular artículo no cuenta con descripción adicional, pero puedes cotizarlo o resolver tus dudas de inmediato."}
+                    </p>
+                  </div>
+
+                  {/* Beneficios de confianza destacados */}
+                  <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-50 mb-6">
+                    <span className="text-xs font-bold text-blue-800 uppercase tracking-wider block mb-3">Beneficios con tu compra:</span>
+                    <ul className="space-y-2 text-xs text-gray-700">
+                      <li className="flex items-center gap-2">
+                        <ShieldCheck size={16} className="text-green-600 shrink-0" />
+                        <span><b>Garantía Oficial:</b> Cobertura ante fallas de fábrica.</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Truck size={16} className="text-green-600 shrink-0" />
+                        <span><b>Envío Seguro:</b> Cobertura a toda Colombia.</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    openWhatsApp(selectedProduct.name);
+                    setSelectedProduct(null);
+                  }}
+                  className="w-full py-4 text-white text-base font-bold rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg hover:brightness-110"
+                  style={{ backgroundColor: storeInfo.secondaryColor }}
+                >
+                  <MessageCircle size={24} />
+                  Comprar por WhatsApp
+                </button>
+              </div>
+
+            </div>
           </div>
+        );
+      })()}
+
+      {/* LIGHTBOX DE PANTALLA COMPLETA (ZOOM PREMIUM) */}
+      {zoomImage && (
+        <div 
+          onClick={() => setZoomImage(null)}
+          className="fixed inset-0 bg-black/95 z-[70] flex items-center justify-center p-4 cursor-zoom-out backdrop-blur-md animate-fade-in"
+        >
+          <button 
+            onClick={() => setZoomImage(null)}
+            className="absolute top-6 right-6 text-white hover:text-gray-300 bg-white/10 rounded-full p-2 backdrop-blur"
+          >
+            <X size={28} />
+          </button>
+          <img 
+            src={zoomImage} 
+            alt="Ampliación" 
+            className="max-w-full max-h-[90vh] object-contain rounded-xl select-none shadow-2xl pointer-events-none" 
+          />
         </div>
       )}
 
@@ -1216,38 +1294,53 @@ export default function App() {
             <h2 className="text-2xl font-bold text-gray-900 mb-6">{editingProduct ? 'Editar Producto' : 'Nuevo Producto'}</h2>
             <form onSubmit={handleSaveProduct} className="space-y-5">
               
+              {/* Fotos Múltiples (Máximo 4) */}
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">Foto del producto</label>
-                <div 
-                  onClick={() => productInputRef.current?.click()} 
-                  className="border-2 border-dashed border-gray-300 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors h-44 group relative overflow-hidden"
-                >
-                  {productFormData.image ? (
-                    <img src={productFormData.image} alt="Preview" className="w-full h-full object-cover absolute inset-0 group-hover:opacity-50 transition-opacity" />
-                  ) : (
-                    <>
-                      <Upload size={32} className="text-gray-400 mb-2 group-hover:scale-110 transition-transform" />
-                      <span className="text-xs font-semibold text-gray-500">Cargar Imagen Local</span>
-                    </>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Fotos del producto (Máximo 4)</label>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {(productFormData.images || []).map((imgBase64, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-gray-200 group">
+                      <img src={imgBase64} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updatedImages = productFormData.images.filter((_, i) => i !== idx);
+                          setProductFormData({ ...productFormData, images: updatedImages });
+                        }}
+                        className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full hover:bg-red-700 shadow-sm"
+                      >
+                        <X size={10} />
+                      </button>
+                    </div>
+                  ))}
+                  {(!productFormData.images || productFormData.images.length < 4) && (
+                    <div 
+                      onClick={() => productInputRef.current?.click()}
+                      className="border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 h-full min-h-[70px] aspect-square"
+                    >
+                      <Plus size={18} className="text-gray-400" />
+                    </div>
                   )}
-                  <input 
-                    type="file" 
-                    ref={productInputRef} 
-                    className="hidden" 
-                    accept="image/*" 
-                    onChange={async (e) => {
-                      const file = e.target.files[0];
-                      if (file) {
-                        try {
-                          const base64 = await compressAndConvertImage(file, 500, 500, 0.6);
-                          setProductFormData({ ...productFormData, image: base64 });
-                        } catch (err) {
-                          console.error(err);
-                        }
-                      }
-                    }}
-                  />
                 </div>
+                <input 
+                  type="file" 
+                  ref={productInputRef} 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={async (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                      try {
+                        const base64 = await compressAndConvertImage(file, 500, 500, 0.6);
+                        const currentImages = productFormData.images || [];
+                        setProductFormData({ ...productFormData, images: [...currentImages, base64] });
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }
+                    e.target.value = ''; 
+                  }}
+                />
               </div>
 
               <div>
