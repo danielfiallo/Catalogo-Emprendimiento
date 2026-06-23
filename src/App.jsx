@@ -51,7 +51,9 @@ const DEFAULT_STORE_INFO = {
   aboutImage: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80',
   primaryColor: '#3b82f6', 
   secondaryColor: '#10b981', 
-  fontFamily: 'font-sans' 
+  fontFamily: 'font-sans',
+  bannerAlign: 'object-center',
+  bannerOverlayOpacity: 0.5
 };
 
 const DEFAULT_PRODUCTS = [
@@ -119,7 +121,7 @@ export default function App() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewFormData, setReviewFormData] = useState({ author: '', text: '', rating: 5 });
 
-  // Nuevo estado para abrir el modal del cliente
+  // Nuevo estado para abrir el modal del cliente con detalles
   const [selectedProduct, setSelectedProduct] = useState(null);
 
   const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, action: null, message: '' });
@@ -136,8 +138,6 @@ export default function App() {
   useEffect(() => {
     let unsubs = [];
     
-    // Temporizador de respaldo: si Firebase tarda más de 3.5 segundos en responder,
-    // activamos el modo Local de inmediato para que la web funcione perfectamente.
     const fallbackTimer = setTimeout(() => {
       if (loading) {
         console.warn("Firebase demoró demasiado en responder. Activando respaldo LocalStorage.");
@@ -223,7 +223,6 @@ export default function App() {
     }
   };
 
-  // Función de sincronización para guardar datos (intenta en Firebase, siempre guarda en LocalStorage)
   const guardarConfiguracion = async (nuevosDatos) => {
     const configActualizada = { ...storeInfo, ...nuevosDatos };
     setStoreInfo(configActualizada);
@@ -238,7 +237,6 @@ export default function App() {
     }
   };
 
-  // Función mágica que reduce el tamaño de las imágenes para guardarlas gratis
   const compressAndConvertImage = (file, maxWidth = 500, maxHeight = 500, quality = 0.6) => {
     return new Promise((resolve, reject) => {
       setCompressing(true);
@@ -339,7 +337,7 @@ export default function App() {
 
   const handleLoginSubmit = (e) => {
     e.preventDefault();
-    // Cambia '1234' por la contraseña de 4 números que tú quieras (mantén las comillas sencillas)
+    // Cambia '9876' por la contraseña de 4 números que tú quieras
     if (pin === '9876') { 
       setIsAdminMode(true);
       setShowLoginModal(false);
@@ -365,7 +363,6 @@ export default function App() {
     const idTemp = editingProduct ? editingProduct.id : `prod-${Date.now()}`;
     const nuevoProducto = { ...productFormData, id: idTemp };
 
-    // 1. Guardar localmente de inmediato
     let productosActualizados;
     if (editingProduct) {
       productosActualizados = products.map(p => p.id === idTemp ? nuevoProducto : p);
@@ -375,7 +372,6 @@ export default function App() {
     setProducts(productosActualizados);
     localStorage.setItem('local_products', JSON.stringify(productosActualizados));
 
-    // 2. Intentar guardar en Firebase
     if (firebaseDisponible && !usandoLocal) {
       try {
         if (editingProduct) {
@@ -614,16 +610,21 @@ export default function App() {
         {storeInfo.bannerImage && (
           <img 
             src={storeInfo.bannerImage} 
-            className="absolute inset-0 w-full h-full object-cover opacity-30" 
+            className={`absolute inset-0 w-full h-full object-cover transition-all ${storeInfo.bannerAlign || 'object-center'}`} 
+            style={{ opacity: 1 - (storeInfo.bannerOverlayOpacity !== undefined ? storeInfo.bannerOverlayOpacity : 0.6) }}
             alt="Banner background" 
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-r from-gray-950 via-gray-900/80 to-transparent" />
+        <div 
+          className="absolute inset-0 bg-black transition-all" 
+          style={{ opacity: storeInfo.bannerOverlayOpacity !== undefined ? storeInfo.bannerOverlayOpacity : 0.6 }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-gray-950/80 via-transparent to-transparent" />
         
         <div className="relative max-w-5xl mx-auto px-4 py-16 sm:px-6 lg:px-8 w-full z-10">
           <div className="max-w-2xl">
             {isAdminMode ? (
-              <div className="space-y-4 bg-black/40 p-4 rounded-2xl border border-white/20">
+              <div className="space-y-4 bg-black/50 p-4 rounded-2xl border border-white/10 text-sm">
                 <span className="text-yellow-400 font-bold text-xs uppercase block">Editar Hero Banner:</span>
                 <input 
                   type="text" 
@@ -634,8 +635,37 @@ export default function App() {
                 <textarea 
                   value={storeInfo.bannerSubtitle}
                   onChange={async (e) => await guardarConfiguracion({ bannerSubtitle: e.target.value })}
-                  className="text-sm bg-white/10 border border-white/20 rounded p-2 w-full text-white focus:outline-none h-20"
+                  className="text-xs bg-white/10 border border-white/20 rounded p-2 w-full text-white focus:outline-none h-20"
                 />
+                
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="block text-gray-400 mb-1">Ángulo de Imagen (Alineación):</label>
+                    <select 
+                      value={storeInfo.bannerAlign || 'object-center'}
+                      onChange={async (e) => await guardarConfiguracion({ bannerAlign: e.target.value })}
+                      className="bg-gray-800 border border-white/10 text-white rounded p-1 w-full outline-none"
+                    >
+                      <option value="object-top">Arriba</option>
+                      <option value="object-center">Centro</option>
+                      <option value="object-bottom">Abajo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 mb-1">Opacidad de Filtro Oscuro:</label>
+                    <select 
+                      value={storeInfo.bannerOverlayOpacity !== undefined ? storeInfo.bannerOverlayOpacity : 0.6}
+                      onChange={async (e) => await guardarConfiguracion({ bannerOverlayOpacity: parseFloat(e.target.value) })}
+                      className="bg-gray-800 border border-white/10 text-white rounded p-1 w-full outline-none"
+                    >
+                      <option value="0.2">Claro (20% oscuridad)</option>
+                      <option value="0.4">Sutil (40% oscuridad)</option>
+                      <option value="0.6">Medio (60% oscuridad)</option>
+                      <option value="0.8">Oscuro (80% oscuridad)</option>
+                    </select>
+                  </div>
+                </div>
+
                 <button 
                   onClick={() => bannerImageInputRef.current?.click()}
                   className="py-1.5 px-3 bg-white/20 hover:bg-white/30 text-xs rounded-lg flex items-center gap-2 transition-all font-semibold"
@@ -695,7 +725,6 @@ export default function App() {
               {products.map(product => (
                 <div key={product.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-full group relative">
                   
-                  {}
                   <div 
                     onClick={() => !isAdminMode && setSelectedProduct(product)}
                     className={`relative aspect-square bg-gray-50 overflow-hidden ${!isAdminMode ? 'cursor-pointer' : ''}`}
@@ -993,7 +1022,7 @@ export default function App() {
         </div>
       )}
 
-      {}
+      {/* VENTANA FLOTANTE DE DETALLES DE PRODUCTO (CON EFECTO ESPEJO DE DOBLE CAPA) */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl relative flex flex-col md:flex-row max-h-[90vh] md:max-h-none overflow-y-auto md:overflow-visible">
@@ -1005,12 +1034,25 @@ export default function App() {
               <X size={20} />
             </button>
 
-            {/* Lado de Imagen */}
-            <div className="w-full md:w-1/2 aspect-square md:aspect-auto md:h-auto bg-gray-50 relative min-h-[250px]">
+            {/* Lado de Imagen con Efecto de Doble Capa Espejo (Estilo Apple) */}
+            <div className="w-full md:w-1/2 aspect-square md:aspect-auto md:h-auto bg-black relative min-h-[250px] overflow-hidden flex items-center justify-center">
               {selectedProduct.image ? (
-                <img src={selectedProduct.image} alt={selectedProduct.name} className="w-full h-full object-cover" />
+                <>
+                  {/* Capa de fondo muy difuminada que llena el fondo */}
+                  <img 
+                    src={selectedProduct.image} 
+                    alt="" 
+                    className="absolute inset-0 w-full h-full object-cover blur-2xl opacity-40 scale-125" 
+                  />
+                  {/* Capa de imagen real contenida completa (nunca se corta) */}
+                  <img 
+                    src={selectedProduct.image} 
+                    alt={selectedProduct.name} 
+                    className="relative z-10 max-w-full max-h-full object-contain p-4" 
+                  />
+                </>
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
                   <ImageIcon size={64} />
                   <span className="text-sm font-semibold mt-2">Sin imagen</span>
                 </div>
