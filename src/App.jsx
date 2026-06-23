@@ -129,7 +129,7 @@ export default function App() {
   const [productFormData, setProductFormData] = useState({ name: '', price: '', description: '', images: [] });
 
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-  const [reviewFormData, setReviewFormData] = useState({ author: '', text: '', rating: 5 });
+  const [reviewFormData, setReviewFormData] = useState({ author: '', text: '', rating: 5, image: '' });
 
   // Detalle del producto e índice de imagen activa en el carrusel
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -437,6 +437,7 @@ export default function App() {
           author: reviewFormData.author,
           text: reviewFormData.text,
           rating: reviewFormData.rating,
+          image: reviewFormData.image || '',
           date: Date.now()
         });
       } catch (err) {
@@ -444,7 +445,7 @@ export default function App() {
       }
     }
     setIsReviewModalOpen(false);
-    setReviewFormData({ author: '', text: '', rating: 5 });
+    setReviewFormData({ author: '', text: '', rating: 5, image: '' });
   };
 
   const requestDeleteReview = (id) => {
@@ -909,17 +910,36 @@ export default function App() {
             )}
           </div>
           
+          {}
           {reviews.length === 0 ? (
             <p className="text-center py-8 text-gray-500 italic">No hay opiniones publicadas todavía.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {reviews.map(review => (
-                <div key={review.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative group">
-                  <div className="flex text-yellow-400 mb-3">
-                    {[...Array(review.rating)].map((_, i) => <Star key={i} size={18} fill="currentColor" />)}
+                <div key={review.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative group flex flex-col justify-between">
+                  <div>
+                    <div className="flex text-yellow-400 mb-3">
+                      {[...Array(review.rating)].map((_, i) => <Star key={i} size={18} fill="currentColor" />)}
+                    </div>
+                    <p className="text-gray-700 italic mb-4">"{review.text}"</p>
+                    <p className="font-bold text-gray-900 mb-4">- {review.author}</p>
+                    
+                    {review.image && (
+                      <div className="mt-3 mb-2 relative rounded-xl overflow-hidden border border-gray-100 max-w-[140px] aspect-[9/16] bg-gray-50 group/screenshot cursor-zoom-in">
+                        <img 
+                          src={review.image} 
+                          alt="Evidencia WhatsApp" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div 
+                          onClick={() => setZoomImage(review.image)}
+                          className="absolute inset-0 bg-black/40 opacity-0 group-hover/screenshot:opacity-100 flex items-center justify-center transition-all"
+                        >
+                          <Maximize2 size={20} className="text-white" />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-gray-700 italic mb-4">"{review.text}"</p>
-                  <p className="font-bold text-gray-900">- {review.author}</p>
                   
                   {isAdminMode && (
                     <button 
@@ -1388,8 +1408,8 @@ export default function App() {
       {/* MODAL PARA AGREGAR RESEÑAS */}
       {isReviewModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl relative">
-            <button onClick={() => setIsReviewModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button onClick={() => setIsReviewModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900 bg-gray-100 rounded-full p-1">
               <X size={20} />
             </button>
             <h2 className="text-xl font-bold text-gray-900 mb-6">Añadir Reseña de Cliente</h2>
@@ -1406,6 +1426,51 @@ export default function App() {
                   <option value="3">⭐⭐⭐ (3/5)</option>
                 </select>
               </div>
+
+              {}
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Captura de WhatsApp (Opcional)</label>
+                <div className="flex items-center gap-3">
+                  {reviewFormData.image ? (
+                    <div className="relative w-16 h-28 rounded-lg overflow-hidden border border-gray-200">
+                      <img src={reviewFormData.image} alt="Preview" className="w-full h-full object-cover" />
+                      <button 
+                        type="button" 
+                        onClick={() => setReviewFormData({...reviewFormData, image: ''})}
+                        className="absolute top-1 right-1 bg-red-600 text-white p-1 rounded-full hover:bg-red-700 shadow-sm"
+                      >
+                        <X size={8} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => {
+                        const fileInput = document.createElement('input');
+                        fileInput.type = 'file';
+                        fileInput.accept = 'image/*';
+                        fileInput.onchange = async (e) => {
+                          const file = e.target.files[0];
+                          if (file) {
+                            try {
+                              // Las capturas de WhatsApp móviles son largas verticales
+                              const base64 = await compressAndConvertImage(file, 360, 640, 0.6);
+                              setReviewFormData({...reviewFormData, image: base64});
+                            } catch (err) {
+                              console.error(err);
+                            }
+                          }
+                        };
+                        fileInput.click();
+                      }}
+                      className="border border-dashed border-gray-300 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 flex-1 min-h-[80px]"
+                    >
+                      <Camera size={24} className="text-gray-400 mb-1" />
+                      <span className="text-xs text-gray-500 font-semibold">Cargar Captura de Chat</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-1">Opinión</label>
                 <textarea required rows="3" value={reviewFormData.text} onChange={(e) => setReviewFormData({...reviewFormData, text: e.target.value})} className="w-full px-4 py-2 border rounded-xl text-sm resize-none" placeholder="Lo que dijo el cliente..." />
