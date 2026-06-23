@@ -465,14 +465,30 @@ export default function App() {
     }).format(price);
   };
 
-  const openWhatsApp = (productName = null) => {
-    let message = `¡Hola! Vengo de tu catálogo virtual.`;
-    if (productName) {
-      message = `¡Hola! Me interesa cotizar o comprar el producto: *${productName}*. ¿Me podrías dar más información?`;
-    }
-    const url = `https://wa.me/${storeInfo.phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
-  };
+const openWhatsApp = (productName = null) => {
+     let message = `¡Hola! Vengo de tu catálogo virtual.`;
+     if (productName) {
+       message = `¡Hola! Me interesa cotizar o comprar el producto: *${productName}*. ¿Me podrías dar más información?`;
+       
+       // 🎯 Envía el evento a Facebook diciendo qué producto le interesó
+       if (window.fbq) {
+         window.fbq('track', 'Lead', {
+           content_name: productName,
+           status: 'Click WhatsApp Producto'
+         });
+       }
+     } else {
+       // 🎯 Envía un evento general si solo hizo clic en el botón flotante
+       if (window.fbq) {
+         window.fbq('track', 'Contact', {
+           status: 'Click WhatsApp General'
+         });
+       }
+     }
+     
+     const url = `https://wa.me/${storeInfo.phone}?text=${encodeURIComponent(message)}`;
+     window.open(url, '_blank');
+   };
 
   const COLOR_PALETTES = [
     { primary: '#3b82f6', secondary: '#10b981', label: 'Tech Clásico (Azul/Esmeralda)' },
